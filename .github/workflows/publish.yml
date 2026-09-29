@@ -1,0 +1,36 @@
+name: Publish to crates.io
+
+on:
+  push:
+    tags:
+      - "socketry-v*"
+      - "socketry-concurrent-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Select package from release tag
+        id: package
+        shell: bash
+        run: |
+          case "$GITHUB_REF_NAME" in
+            socketry-concurrent-v*) echo "name=socketry-concurrent" >> "$GITHUB_OUTPUT" ;;
+            socketry-v*) echo "name=socketry" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported release tag: $GITHUB_REF_NAME" >&2; exit 1 ;;
+          esac
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish package
+        run: cargo publish --package "${{ steps.package.outputs.name }}"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

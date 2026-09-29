@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/concurrent"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/socketry/socketry-rust"
+
+[package]
+name = "socketry"
+version.workspace = true
+edition.workspace = true
+description = "Foundational concurrency APIs for Socketry"
+license.workspace = true
+repository.workspace = true
+readme = "readme.md"
+include = ["Cargo.toml", "readme.md", "license.md", "src/**"]
+
+[dependencies]
+socketry-concurrent = { version = "0.1.0", path = "crates/concurrent" }

@@ -1,0 +1,19 @@
+[package]
+name = "socketry-concurrent"
+version.workspace = true
+edition.workspace = true
+description = "Stackful fibers and a small cooperative scheduler"
+license.workspace = true
+repository.workspace = true
+readme = "readme.md"
+include = ["Cargo.toml", "build.rs", "license.md", "readme.md", "src/**", "vendor/**"]
+
+[lib]
+name = "socketry_concurrent"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"
