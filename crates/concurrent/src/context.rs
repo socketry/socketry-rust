@@ -294,7 +294,7 @@ impl Drop for Context {
         #[cfg(coroutine_thread_sanitizer)]
         if self.thread_sanitizer_fiber_owned != 0 && !self.thread_sanitizer_fiber.is_null() {
             // SAFETY: this context owns the fiber handle and is no longer
-            // running when its containing Fiber is dropped.
+            // running when its containing task coroutine is dropped.
             unsafe {
                 thread_sanitizer_destroy_fiber(self.thread_sanitizer_fiber);
             }

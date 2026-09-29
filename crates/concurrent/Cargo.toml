@@ -2,11 +2,11 @@
 name = "socketry-concurrent"
 version.workspace = true
 edition.workspace = true
-description = "Stackful fibers and a small cooperative scheduler"
+description = "A cooperative future scheduler with nested stackful waits"
 license.workspace = true
 repository.workspace = true
 readme = "readme.md"
-include = ["Cargo.toml", "build.rs", "license.md", "readme.md", "src/**", "vendor/**"]
+include = ["Cargo.toml", "build.rs", "license.md", "readme.md", "src/**", "examples/**", "vendor/**"]
 
 [lib]
 name = "socketry_concurrent"

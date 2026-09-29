@@ -1,12 +1,14 @@
-//! Stackful fibers, guarded stacks, and an optional cooperative future scheduler.
+//! Futures with nested stackful waits, guarded stacks, and cooperative scheduling.
 
 mod context;
-mod fiber;
+mod coroutine;
 mod pool;
 mod scheduler;
 mod stack;
 
-pub use fiber::Fiber;
 pub use pool::Pool;
-pub use scheduler::{Scheduler, SchedulerHandle, TaskHandle};
+pub use scheduler::{Scheduler, SchedulerHandle, Task, TaskHandle, wait};
 pub use stack::Stack;
+
+#[cfg(test)]
+mod coroutine_tests;

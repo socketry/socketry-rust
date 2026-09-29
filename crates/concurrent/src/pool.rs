@@ -1,7 +1,7 @@
 use crate::stack::Stack;
 use std::io;
 
-/// A cache of multiple guarded stacks for fibers.
+/// A cache of guarded stacks for scheduler tasks.
 pub struct Pool {
     stack_size: usize,
     max_cached: usize,
