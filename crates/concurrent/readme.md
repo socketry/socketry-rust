@@ -46,9 +46,30 @@ x86-64, x86, AArch64,
 supported by each upstream backend. The PowerPC 32-bit and big-endian 64-bit
 backends are Darwin-only upstream; PowerPC64 little-endian is Linux-only.
 
+The selected upstream `Context.S` file provides register switching. Its
+matching `Context.h` stack initialization logic is ported into separate Rust
+modules under `src/context/`; the original headers remain available in the
+vendored tree for reference.
+
 The x86-64 Linux build includes CRuby's CET shadow-stack switch path. It checks
 whether shadow stacks are enabled at runtime and allocates a shadow stack for
 each fiber only when needed.
+
+## Sanitizers
+
+The `address-sanitizer` and `thread-sanitizer` Cargo features enable the
+compiler runtime's fiber-switch hooks. Pair one feature with the matching Rust
+sanitizer flag on nightly; the hooks let each runtime follow the custom stacks
+used by Fiber.
+
+    RUSTFLAGS="-Zsanitizer=address" cargo +nightly test -Zbuild-std --target aarch64-apple-darwin --package socketry-concurrent --features address-sanitizer
+
+    RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test -Zbuild-std --target aarch64-apple-darwin --package socketry-concurrent --features thread-sanitizer
+
+Install the `rust-src` component for nightly before using `-Zbuild-std`. The
+Rust sanitizer flags and supported targets are documented in the
+[Rust Unstable Book](https://doc.rust-lang.org/unstable-book/compiler-flags/sanitizer.html).
+AddressSanitizer and ThreadSanitizer cannot be enabled together.
 
 The upstream source commit is recorded in `vendor/cruby/upstream.md`. The
 vendored coroutine sources are available under the MIT license in

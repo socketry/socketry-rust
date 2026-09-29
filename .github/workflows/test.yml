@@ -41,3 +41,26 @@ jobs:
           release: "15.1"
           prepare: pkg install -y rust
           run: cargo test --workspace --all-targets --locked
+
+  sanitizer:
+    name: Linux x86-64 ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AddressSanitizer
+            sanitizer: address
+            feature: address-sanitizer
+          - name: ThreadSanitizer
+            sanitizer: thread
+            feature: thread-sanitizer
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Run sanitizer tests
+        run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace --all-targets --features socketry-concurrent/${{ matrix.feature }} --locked
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}

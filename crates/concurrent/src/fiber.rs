@@ -50,7 +50,7 @@ impl Fiber {
 
     /// Create a fiber using an existing guarded stack.
     pub fn with_stack(stack: Stack, entry: impl FnOnce() + 'static) -> io::Result<Self> {
-        let context = Context::for_stack(&stack, fiber_entry as CoroutineStart);
+        let context = Context::for_stack(&stack, fiber_entry as CoroutineStart)?;
         let caller = Context::empty();
 
         let inner = Box::new(FiberInner {
@@ -155,12 +155,18 @@ impl Fiber {
 }
 
 #[cfg(target_arch = "x86")]
-extern "fastcall" fn fiber_entry(_from: *mut std::ffi::c_void, _self: *mut std::ffi::c_void) -> ! {
+extern "fastcall" fn fiber_entry(from: *mut Context, this: *mut Context) -> ! {
+    // SAFETY: the assembly trampoline enters here on `this`'s initialized
+    // stack, with valid context pointers supplied by Context::switch.
+    unsafe { Context::finish_initial_switch(from, this) };
     fiber_entry_inner()
 }
 
 #[cfg(not(target_arch = "x86"))]
-extern "C" fn fiber_entry(_from: *mut std::ffi::c_void, _self: *mut std::ffi::c_void) -> ! {
+extern "C" fn fiber_entry(from: *mut Context, this: *mut Context) -> ! {
+    // SAFETY: the assembly trampoline enters here on `this`'s initialized
+    // stack, with valid context pointers supplied by Context::switch.
+    unsafe { Context::finish_initial_switch(from, this) };
     fiber_entry_inner()
 }
 
@@ -185,7 +191,7 @@ fn fiber_entry_inner() -> ! {
     unsafe {
         (*inner).panic = panic;
         (*inner).state = State::Finished;
-        Context::switch(
+        Context::switch_final(
             std::ptr::addr_of_mut!((*inner).context),
             std::ptr::addr_of_mut!((*inner).caller),
         );

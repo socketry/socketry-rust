@@ -12,6 +12,10 @@ include = ["Cargo.toml", "build.rs", "license.md", "readme.md", "src/**", "vendo
 name = "socketry_concurrent"
 path = "src/lib.rs"
 
+[features]
+address-sanitizer = []
+thread-sanitizer = []
+
 [dependencies]
 libc = "0.2"
 
