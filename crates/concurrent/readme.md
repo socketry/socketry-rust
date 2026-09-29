@@ -39,17 +39,19 @@ Scheduler::block_current and be made runnable again through its TaskHandle.
 
 ## Native context switches
 
-Architecture-specific assembly is vendored from CRuby's coroutine directory.
-The build currently integrates the x86-64 and AArch64 implementations on Linux,
-macOS, and FreeBSD. Other CRuby assembly implementations are preserved in
-vendor/cruby/coroutine but are not yet selected by this crate's build.
+The complete CRuby coroutine source tree is vendored, including all platform
+backends, helper implementations, and upstream tests. The build integrates
+x86-64, x86, AArch64,
+32-bit ARM, RISC-V64, LoongArch64, and PowerPC variants on the Unix targets
+supported by each upstream backend. The PowerPC 32-bit and big-endian 64-bit
+backends are Darwin-only upstream; PowerPC64 little-endian is Linux-only.
 
 The x86-64 Linux build includes CRuby's CET shadow-stack switch path. It checks
 whether shadow stacks are enabled at runtime and allocates a shadow stack for
 each fiber only when needed.
 
 The upstream source commit is recorded in `vendor/cruby/upstream.md`. The
-vendored coroutine assembly is available under the MIT license in
+vendored coroutine sources are available under the MIT license in
 vendor/cruby/license.md, including attribution for source files without an
 embedded header.
 

@@ -89,9 +89,8 @@ impl Stack {
         self.size
     }
 
-    pub(crate) fn top(&self) -> *mut u8 {
-        // SAFETY: base points to the beginning of the usable region.
-        unsafe { self.base.as_ptr().add(self.size) }
+    pub(crate) fn base(&self) -> *mut u8 {
+        self.base.as_ptr()
     }
 }
 

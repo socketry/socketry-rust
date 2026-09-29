@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::context::{Context, CoroutineStart};
 use crate::stack::Stack;
 use std::any::Any;
 use std::cell::Cell;
@@ -6,9 +6,6 @@ use std::io;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::rc::Rc;
-
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-use crate::context::ShadowStack;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
@@ -26,8 +23,6 @@ struct FiberInner {
     panic: Option<Box<dyn Any + Send + 'static>>,
     cancel_requested: bool,
     state: State,
-    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    _shadow_stack: Option<ShadowStack>,
 }
 
 #[derive(Debug)]
@@ -55,34 +50,18 @@ impl Fiber {
 
     /// Create a fiber using an existing guarded stack.
     pub fn with_stack(stack: Stack, entry: impl FnOnce() + 'static) -> io::Result<Self> {
-        #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-        let shadow_stack = ShadowStack::allocate(stack.size())?;
+        let context = Context::for_stack(&stack, fiber_entry as CoroutineStart);
+        let caller = Context::empty();
 
-        #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-        let shadow_stack_pointer = shadow_stack
-            .as_ref()
-            .map_or(std::ptr::null_mut(), ShadowStack::pointer);
-
-        #[cfg(not(all(target_arch = "x86_64", target_os = "linux")))]
-        let shadow_stack_pointer = std::ptr::null_mut();
-
-        let mut inner = Box::new(FiberInner {
-            context: Context::empty(),
-            caller: Context::empty(),
+        let inner = Box::new(FiberInner {
+            context,
+            caller,
             stack: Some(stack),
             entry: Some(Box::new(entry)),
             panic: None,
             cancel_requested: false,
             state: State::New,
-            #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-            _shadow_stack: shadow_stack,
         });
-
-        inner.context.initialize(
-            inner.stack.as_ref().expect("stack just installed"),
-            fiber_entry,
-            shadow_stack_pointer,
-        );
 
         Ok(Self {
             inner,
@@ -175,7 +154,17 @@ impl Fiber {
     }
 }
 
-extern "C" fn fiber_entry() -> ! {
+#[cfg(target_arch = "x86")]
+extern "fastcall" fn fiber_entry(_from: *mut std::ffi::c_void, _self: *mut std::ffi::c_void) -> ! {
+    fiber_entry_inner()
+}
+
+#[cfg(not(target_arch = "x86"))]
+extern "C" fn fiber_entry(_from: *mut std::ffi::c_void, _self: *mut std::ffi::c_void) -> ! {
+    fiber_entry_inner()
+}
+
+fn fiber_entry_inner() -> ! {
     let inner = ACTIVE_FIBER.with(Cell::get);
     if inner.is_null() {
         std::process::abort();
