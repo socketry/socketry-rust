@@ -1,0 +1,28 @@
+[workspace]
+members = ["crates/executor"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/socketry/socketry-rust"
+
+[package]
+name = "socketry"
+version.workspace = true
+edition.workspace = true
+description = "Foundational concurrency APIs for Socketry"
+license.workspace = true
+repository.workspace = true
+readme = "readme.md"
+include = ["Cargo.toml", "readme.md", "license.md", "conventions.md", "agent-context.md", "design.md", "context/**", "src/**"]
+
+[dependencies]
+socketry-executor = { version = "0.1.0", path = "crates/executor", default-features = false }
+
+[features]
+default = ["native"]
+native = ["socketry-executor/native"]
+io-uring = ["native", "socketry-executor/io-uring"]
+tokio = ["socketry-executor/tokio"]

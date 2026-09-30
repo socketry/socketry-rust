@@ -1,0 +1,97 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            runner: ubuntu-24.04
+          - name: Linux AArch64
+            runner: ubuntu-24.04-arm
+          - name: macOS x86-64
+            runner: macos-15-intel
+          - name: macOS AArch64
+            runner: macos-15
+          - name: Windows x86-64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run workspace tests
+        run: cargo test --workspace --all-targets --features tokio --locked
+      - name: Run documentation tests
+        run: cargo test --workspace --doc --features tokio --locked
+      - name: Check executor-only and Tokio-only configurations
+        run: |
+          cargo check --workspace --all-targets --no-default-features --locked
+          cargo check --workspace --all-targets --no-default-features --features tokio --locked
+
+  io-uring:
+    name: io_uring ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # Run on the host kernel: container policies commonly deny io_uring.
+      # Initialization errors fail these tests; they are not silently skipped.
+      - name: Exercise native completion and cancellation
+        run: cargo test --workspace --all-targets --all-features --locked
+      - name: Check native selector code
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  freebsd:
+    name: FreeBSD x86-64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run workspace tests in FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          prepare: pkg install -y rust
+          run: |
+            cargo test --workspace --all-targets --features tokio --locked
+            cargo test --workspace --doc --features tokio --locked
+
+  sanitizer:
+    name: Linux x86-64 ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AddressSanitizer
+            sanitizer: address
+          - name: ThreadSanitizer
+            sanitizer: thread
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Run sanitizer tests
+        # Loom uses simulated synchronization and private generator stacks.
+        # Its model runs in the normal matrix; sanitize the actual executor here.
+        run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace --all-targets --locked -- --skip queue_publication_cannot_leave_a_worker_asleep
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
