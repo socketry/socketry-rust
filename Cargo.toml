@@ -1,6 +1,9 @@
 [workspace]
-members = ["crates/executor"]
+members = ["crates/executor", "bake"]
 resolver = "3"
+
+[workspace.metadata.bake]
+manifest = "bake/Cargo.toml"
 
 [workspace.package]
 version = "0.1.0"
@@ -16,7 +19,7 @@ description = "Foundational concurrency APIs for Socketry"
 license.workspace = true
 repository.workspace = true
 readme = "readme.md"
-include = ["Cargo.toml", "readme.md", "license.md", "conventions.md", "agent-context.md", "design.md", "context/**", "src/**"]
+include = ["Cargo.toml", "readme.md", "license.md", "releases.md", "context/**", "src/**"]
 
 [dependencies]
 socketry-executor = { version = "0.1.0", path = "crates/executor", default-features = false }

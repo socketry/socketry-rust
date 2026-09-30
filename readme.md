@@ -91,7 +91,8 @@ TCP connect/accept/read/write/readiness, positioned file reads/writes, and sleep
 are implemented. Regular files use blocking pools except for Linux io_uring.
 Windows socket readiness uses IOCP/AFD; native overlapped file operations are
 not implemented. Socketry currently uses async-io's shared readiness reactor
-and timers; the io-event timer port remains planned in [design.md](design.md).
+and timers; the io-event timer port remains planned in the
+[design guide](context/design.md).
 
 The io_uring selector owns a dedicated thread, retains buffers until terminal
 completions, and drains cancellation during shutdown. Connection setup and
@@ -104,11 +105,17 @@ The former coroutine implementation is preserved on branch `coroutine`, at
 commit `b520f3d`. Its native sources, stack allocation, nested synchronous
 `wait` and task transfer are absent from the future executor.
 
-## Project guidance
+## Agent Context
 
-- [Conventions](conventions.md) records the shared Rust and repository style.
-- [Agent context](agent-context.md) records current implementation boundaries.
-- [Rust context](context/rust.md) provides reusable guidance for other crates.
-- [Design](design.md) records runtime boundaries and subsequent work.
+This crate includes an [implementation guide](context/implementation.md) and a
+[design guide](context/design.md). Shared Rust guidance is provided by the
+`bake-agent-context` task dependency. Install it into the repository with:
 
-These documents are included in the root package.
+```sh
+cargo bake agent:context:install
+```
+
+Install the launcher once with `cargo install socketry-cargo-bake --locked`.
+The generated `.agents/context/` directory is ignored by Git. Repository-only
+conventions and publishing instructions live under `.agents/` in the source
+checkout.

@@ -1,11 +1,14 @@
-# Agent Context
+# Implementation Context
 
-Read conventions.md, design.md and context/rust.md before changing public APIs,
-runtime boundaries, package names or workspace layout.
+This guide describes the current implementation and its boundaries. Read
+[the design guide](design.md) before changing public APIs, runtime boundaries,
+package names or workspace layout. Shared Rust development guidance is provided
+by the `bake-agent-context` dependency.
 
 ## Implemented foundation
 
-- `socketry` is the facade and packages the shared conventions and Rust context.
+- `socketry` is the facade for `socketry-executor`. Shared Rust development
+  guidance is provided by the `bake-agent-context` crate.
 - `socketry-executor` executes futures using async-task and Crossbeam queues.
 - Scheduler construction starts worker threads. Tasks require Send + 'static;
   the pinned future remains stationary while workers may change between polls.

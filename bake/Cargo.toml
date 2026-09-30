@@ -1,0 +1,9 @@
+[package]
+name = "socketry-rust-tasks"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+bake = { package = "socketry-bake", version = "0.2.1" }
+bake-agent-context = "0.1.0"
