@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use crate::scheduler::{self, Shared};
 use crate::task::{Runnable, Task, UNASSIGNED_WORKER};
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};

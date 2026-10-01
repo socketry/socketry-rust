@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use crate::owner::Owner;
 use crate::{SchedulerHandle, Spawn, SpawnError, Task, TaskHandle};
 use std::future::Future;

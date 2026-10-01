@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use socketry_executor::{Scheduler, Task, yield_now};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! The same TCP exchange, compiled against Socketry or Tokio.
 #[cfg(any(feature = "native", feature = "tokio"))]
 use socketry_executor::{Network, Spawn};

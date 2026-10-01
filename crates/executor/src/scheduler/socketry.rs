@@ -1,5 +1,7 @@
-//! Socketry's work-stealing executor and scheduler context.
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
 
+//! Socketry's work-stealing executor and scheduler context.
 #[cfg(feature = "native")]
 mod operations;
 

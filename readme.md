@@ -113,6 +113,22 @@ pull request. After review and merge, GitHub Actions publishes the release
 when the configured `crates-io` environment approves it. See the
 [Cargo publishing guide](https://github.com/socketry/bake-cargo-rust/blob/main/context/publishing.md).
 
+## Releases
+
+<!-- bake-readme:releases:start -->
+See [releases.md](releases.md) for the full release history.
+
+### v0.1.1
+
+- Create or update GitHub Releases after successful crates.io publication.
+- Move implementation and design guidance into the package's public context.
+- Add Bake Agent Context tasks to the repository's development workspace.
+<!-- bake-readme:releases:end -->
+
+## See Also
+
+- [socketry](https://github.com/socketry/socketry-rust) — Foundational concurrency APIs for Socketry <!-- bake-readme:package -->
+
 ## Contributing
 
 Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-rust).

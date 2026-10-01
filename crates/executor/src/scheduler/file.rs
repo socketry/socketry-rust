@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Blocking positioned file operations shared by selector adapters.
 use std::fs::File;
 use std::io;

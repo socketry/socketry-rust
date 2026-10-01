@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use crate::owner::Owner;
 use crate::scheduler::{SchedulerHandle, Shared};
 use pin_project_lite::pin_project;

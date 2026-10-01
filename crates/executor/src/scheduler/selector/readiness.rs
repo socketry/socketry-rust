@@ -1,10 +1,12 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Shared readiness operations backed by `async-io`'s persistent registrations.
 //!
 //! Its process-wide reactor drives OS events independently of our executor.
 //! It remains available while registered resources are alive; Socketry task
 //! shutdown does not shut down that shared reactor. Futures contain no private
 //! coroutine stacks and may be polled on different workers.
-
 use crate::scheduler::file::{read_at, write_at};
 use crate::scheduler::{BufferResult, Clock, FileIo, Interest, Network};
 use async_io::Async;

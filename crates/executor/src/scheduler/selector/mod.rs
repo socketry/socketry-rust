@@ -1,6 +1,8 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Native I/O selectors. Platform modules select the OS mechanism at compile
 //! time; Tokio supplies a separate runtime adapter in `scheduler::tokio`.
-
 #[cfg(feature = "native")]
 pub mod readiness;
 

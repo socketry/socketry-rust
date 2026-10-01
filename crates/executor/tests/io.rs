@@ -1,4 +1,8 @@
 #![cfg(any(feature = "native", feature = "tokio"))]
+
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 mod support;
 
 use socketry_executor::{Clock, FileIo, Interest, Network, Spawn};

@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use crate::TaskError;
 use event_listener::Event;
 use std::fmt;
