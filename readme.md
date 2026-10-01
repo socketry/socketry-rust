@@ -91,7 +91,8 @@ TCP connect/accept/read/write/readiness, positioned file reads/writes, and sleep
 are implemented. Regular files use blocking pools except for Linux io_uring.
 Windows socket readiness uses IOCP/AFD; native overlapped file operations are
 not implemented. Socketry currently uses async-io's shared readiness reactor
-and timers; the io-event timer port remains planned in [design.md](design.md).
+and timers; the io-event timer port remains planned in the
+[design guide](context/design.md).
 
 The io_uring selector owns a dedicated thread, retains buffers until terminal
 completions, and drains cancellation during shutdown. Connection setup and
@@ -104,11 +105,33 @@ The former coroutine implementation is preserved on branch `coroutine`, at
 commit `b520f3d`. Its native sources, stack allocation, nested synchronous
 `wait` and task transfer are absent from the future executor.
 
-## Project guidance
+## Releasing
 
-- [Conventions](conventions.md) records the shared Rust and repository style.
-- [Agent context](agent-context.md) records current implementation boundaries.
-- [Rust context](context/rust.md) provides reusable guidance for other crates.
-- [Design](design.md) records runtime boundaries and subsequent work.
+Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`,
+or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a
+pull request. After review and merge, GitHub Actions publishes the release
+when the configured `crates-io` environment approves it. See the
+[Cargo publishing guide](https://github.com/socketry/bake-cargo-rust/blob/main/context/publishing.md).
 
-These documents are included in the root package.
+## Contributing
+
+Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-rust).
+
+### Agent Context
+
+Before contributing, read `agents.md` and the relevant context files it links. If `agents.md` is missing or out of date, run `cargo bake agent:context:install` to install context from dependencies and update the index.
+
+This crate includes an [implementation guide](context/implementation.md) and a
+[design guide](context/design.md). The private `bake/` package links Bake Cargo,
+Bake Agent Context, and their companion task crates. Its version-bump hook
+updates the license, release notes, and generated Readme sections. Install
+dependency context into the repository with:
+
+```sh
+cargo bake agent:context:install
+```
+
+Install the launcher once with `cargo install socketry-cargo-bake --locked`.
+The generated `.agents/context/` directory is ignored by Git. Repository-only
+conventions remain under `.agents/` in the source checkout; publishing guidance
+is included in Bake Cargo agent context.
