@@ -105,7 +105,13 @@ The former coroutine implementation is preserved on branch `coroutine`, at
 commit `b520f3d`. Its native sources, stack allocation, nested synchronous
 `wait` and task transfer are absent from the future executor.
 
-## Agent Context
+## Contributing
+
+Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-rust).
+
+### Agent Context
+
+Before contributing, read `agents.md` and the relevant context files it links. If `agents.md` is missing or out of date, run `cargo bake agent:context:install` to install context from dependencies and update the index.
 
 This crate includes an [implementation guide](context/implementation.md) and a
 [design guide](context/design.md). Shared Rust guidance is provided by the
