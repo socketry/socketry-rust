@@ -5,6 +5,9 @@ resolver = "3"
 [workspace.metadata.bake]
 manifest = "bake/Cargo.toml"
 
+[workspace.metadata.bake.release]
+reviewers = ["socketry/managers"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

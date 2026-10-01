@@ -5,5 +5,9 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-bake = { package = "socketry-bake", version = "0.2.1" }
-bake-agent-context = "0.1.0"
+bake = "0.17.0"
+bake-agent-context = "0.1.1"
+bake-cargo = "0.2.4"
+bake-license = "0.1.1"
+bake-readme = "0.1.1"
+bake-releases = "0.2.1"

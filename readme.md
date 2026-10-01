@@ -105,6 +105,14 @@ The former coroutine implementation is preserved on branch `coroutine`, at
 commit `b520f3d`. Its native sources, stack allocation, nested synchronous
 `wait` and task transfer are absent from the future executor.
 
+## Releasing
+
+Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`,
+or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a
+pull request. After review and merge, GitHub Actions publishes the release
+when the configured `crates-io` environment approves it. See the
+[Cargo publishing guide](https://github.com/socketry/bake-cargo-rust/blob/main/context/publishing.md).
+
 ## Contributing
 
 Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-rust).
@@ -114,8 +122,10 @@ Please open an issue or pull request on [GitHub](https://github.com/socketry/soc
 Before contributing, read `agents.md` and the relevant context files it links. If `agents.md` is missing or out of date, run `cargo bake agent:context:install` to install context from dependencies and update the index.
 
 This crate includes an [implementation guide](context/implementation.md) and a
-[design guide](context/design.md). Shared Rust guidance is provided by the
-`bake-agent-context` task dependency. Install it into the repository with:
+[design guide](context/design.md). The private `bake/` package links Bake Cargo,
+Bake Agent Context, and their companion task crates. Its version-bump hook
+updates the license, release notes, and generated Readme sections. Install
+dependency context into the repository with:
 
 ```sh
 cargo bake agent:context:install
@@ -123,5 +133,5 @@ cargo bake agent:context:install
 
 Install the launcher once with `cargo install socketry-cargo-bake --locked`.
 The generated `.agents/context/` directory is ignored by Git. Repository-only
-conventions and publishing instructions live under `.agents/` in the source
-checkout.
+conventions remain under `.agents/` in the source checkout; publishing guidance
+is included in Bake Cargo agent context.

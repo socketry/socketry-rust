@@ -2,35 +2,284 @@ name: Publish to crates.io
 
 on:
   push:
-    tags:
-      - "socketry-v*"
-      - "socketry-executor-v*"
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      release: ${{ steps.detect.outputs.release }}
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Detect a versioned release change
+        id: detect
+        env:
+          BAKE_BEFORE: ${{ github.event.before || github.event.pull_request.base.sha }}
+          BAKE_SHA: ${{ github.sha }}
+        run: |
+          cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/bake-metadata.json"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          metadata = json.loads((Path(os.environ["RUNNER_TEMP"]) / "bake-metadata.json").read_text())
+          root = Path(metadata["workspace_root"])
+          members = set(metadata["workspace_members"])
+          packages = []
+          for package in metadata["packages"]:
+              if package["id"] not in members:
+                  continue
+              publish = package.get("publish")
+              if publish is False or isinstance(publish, list) and "crates-io" not in publish:
+                  continue
+              packages.append(package)
+          if not packages:
+              raise SystemExit("Workspace has no publishable packages")
+
+          versions = {package["version"] for package in packages}
+          if len(versions) != 1:
+              raise SystemExit(f"Publishable workspace packages must share one version: {sorted(versions)}")
+          version = versions.pop()
+          pattern = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
+          match = pattern.fullmatch(version)
+          if match is None:
+              raise SystemExit(f"Release version must use stable MAJOR.MINOR.PATCH form: {version}")
+          current = tuple(map(int, match.groups()))
+
+          before = os.environ["BAKE_BEFORE"]
+          prior_versions = []
+          if before and set(before) != {"0"}:
+              root_manifest = subprocess.run(
+                  ["git", "show", f"{before}:Cargo.toml"], check=True, capture_output=True, text=True
+              ).stdout
+              prior_root = tomllib.loads(root_manifest)
+              workspace_version = prior_root.get("workspace", {}).get("package", {}).get("version")
+              for package in packages:
+                  manifest = Path(package["manifest_path"]).relative_to(root).as_posix()
+                  result = subprocess.run(
+                      ["git", "show", f"{before}:{manifest}"], capture_output=True, text=True
+                  )
+                  if result.returncode != 0:
+                      continue
+                  document = tomllib.loads(result.stdout)
+                  package_version = document.get("package", {}).get("version")
+                  if isinstance(package_version, dict) and package_version.get("workspace") is True:
+                      package_version = workspace_version
+                  if package_version is not None:
+                      prior_versions.append(package_version)
+
+          if prior_versions:
+              prior_set = set(prior_versions)
+              if len(prior_set) != 1:
+                  raise SystemExit(f"Previous publishable packages did not share one version: {sorted(prior_set)}")
+              prior = next(iter(prior_set))
+              prior_match = pattern.fullmatch(prior)
+              if prior_match is None:
+                  raise SystemExit(f"Previous workspace version is not stable MAJOR.MINOR.PATCH: {prior}")
+              previous = tuple(map(int, prior_match.groups()))
+              if current < previous:
+                  raise SystemExit(f"Workspace version {version} is lower than previous version {prior}")
+              if current == previous:
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                      output.write("release=false\nversion=\n")
+                  raise SystemExit(0)
+
+          release_notes = (root / "releases.md").read_text()
+          heading = re.compile(rf"^## v{re.escape(version)}(?:\s|$)", re.MULTILINE)
+          if heading.search(release_notes) is None:
+              raise SystemExit(f"releases.md must contain a '## v{version}' heading")
+
+          tag = f"v{version}"
+          existing = subprocess.run(
+              ["git", "rev-list", "-n", "1", f"refs/tags/{tag}"], capture_output=True, text=True
+          )
+          if existing.returncode == 0 and existing.stdout.strip() != os.environ["BAKE_SHA"]:
+              raise SystemExit(f"Tag {tag} already exists at a different commit")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"release=true\nversion={version}\n")
+          PY
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  publish:
+    needs: check
+    if: github.event_name == 'push' && needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: crates-io
+    concurrency: release-${{ github.ref }}
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - name: Select package from release tag
-        id: package
-        shell: bash
+      - name: Find workspace packages that need publishing
+        id: packages
+        env:
+          BAKE_VERSION: ${{ needs.check.outputs.version }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            socketry-executor-v*) echo "name=socketry-executor" >> "$GITHUB_OUTPUT" ;;
-            socketry-v*) echo "name=socketry" >> "$GITHUB_OUTPUT" ;;
-            *) echo "Unsupported release tag: $GITHUB_REF_NAME" >&2; exit 1 ;;
-          esac
+          cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/bake-metadata.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          metadata = json.loads((Path(os.environ["RUNNER_TEMP"]) / "bake-metadata.json").read_text())
+          members = set(metadata["workspace_members"])
+          packages = []
+          for package in metadata["packages"]:
+              if package["id"] not in members:
+                  continue
+              publish = package.get("publish")
+              if publish is False or isinstance(publish, list) and "crates-io" not in publish:
+                  continue
+              if package["version"] != os.environ["BAKE_VERSION"]:
+                  raise SystemExit(f"{package['name']} has version {package['version']}, expected {os.environ['BAKE_VERSION']}")
+              packages.append(package)
+          if not packages:
+              raise SystemExit("Workspace has no publishable packages")
+
+          existing = []
+          for package in packages:
+              name = package["name"]
+              url = f"https://crates.io/api/v1/crates/{quote(name, safe='')}/versions"
+              request = Request(url, headers={"User-Agent": "socketry-bake-publish-workflow"})
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      registry = json.load(response)
+              except HTTPError as error:
+                  if error.code == 404:
+                      continue
+                  raise SystemExit(f"Could not check crates.io for {name}: HTTP {error.code}")
+              except (URLError, TimeoutError, json.JSONDecodeError) as error:
+                  raise SystemExit(f"Could not check crates.io for {name}: {error}")
+              versions = registry.get("versions")
+              if not isinstance(versions, list):
+                  raise SystemExit(f"Unexpected crates.io response while checking {name}")
+              if any(item.get("num") == os.environ["BAKE_VERSION"] for item in versions if isinstance(item, dict)):
+                  existing.append(name)
+
+          missing = [package["name"] for package in packages if package["name"] not in existing]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"exclude={json.dumps(existing)}\n")
+              output.write(f"has_packages={'true' if missing else 'false'}\n")
+          PY
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
-      - name: Publish package
-        run: cargo publish --package "${{ steps.package.outputs.name }}"
+        if: steps.packages.outputs.has_packages == 'true'
+      - name: Publish workspace packages
+        if: steps.packages.outputs.has_packages == 'true'
         env:
+          BAKE_EXCLUDE: ${{ steps.packages.outputs.exclude }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          arguments = ["cargo", "publish", "--workspace", "--locked"]
+          for package in json.loads(os.environ["BAKE_EXCLUDE"]):
+              arguments.extend(["--exclude", package])
+          subprocess.run(arguments, check=True)
+          PY
+      - name: Create release tag after successful publication
+        env:
+          BAKE_VERSION: ${{ needs.check.outputs.version }}
+          BAKE_SHA: ${{ github.sha }}
+        run: |
+          tag="v${BAKE_VERSION}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
+            if [ "$(git rev-list -n 1 "${tag}")" != "${BAKE_SHA}" ]; then
+              echo "Tag ${tag} already exists at a different commit" >&2
+              exit 1
+            fi
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" "${BAKE_SHA}" -m "Release ${tag}"
+          git push origin "refs/tags/${tag}"
+      - name: Generate GitHub Release notes
+        env:
+          BAKE_VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          cargo install socketry-cargo-bake --locked
+          cargo bake releases:notes "v${BAKE_VERSION}" > "$RUNNER_TEMP/release-notes.md"
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BAKE_VERSION: ${{ needs.check.outputs.version }}
+          BAKE_RELEASE_NOTES: ${{ runner.temp }}/release-notes.md
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          tag = f"v{os.environ['BAKE_VERSION']}"
+          notes = Path(os.environ["BAKE_RELEASE_NOTES"]).read_text()
+          existing = subprocess.run(
+              ["gh", "release", "view", tag, "--json", "tagName,name,body,isDraft,url"],
+              capture_output=True,
+              text=True,
+          )
+
+          if existing.returncode == 0:
+              release = json.loads(existing.stdout)
+              if (
+                  release.get("tagName") == tag
+                  and release.get("name") == tag
+                  and release.get("body", "") == notes
+                  and release.get("isDraft") is False
+              ):
+                  print(release["url"])
+                  raise SystemExit(0)
+              action = "edit"
+          elif existing.stderr.strip() == "release not found":
+              action = "create"
+          else:
+              raise SystemExit(f"Could not inspect GitHub release {tag}: {existing.stderr.strip()}")
+
+          arguments = ["gh", "release", action, tag, "--title", tag, "--notes-file", "-", "--verify-tag"]
+          if action == "edit":
+              arguments.append("--draft=false")
+
+          result = subprocess.run(arguments, input=notes, capture_output=True, text=True)
+          if result.returncode != 0:
+              raise SystemExit(f"GitHub release {action} failed: {result.stderr.strip()}")
+          url = result.stdout.strip() if action == "create" else release["url"]
+          if not url:
+              raise SystemExit(f"GitHub release {action} returned no URL")
+          print(url)
+          PY

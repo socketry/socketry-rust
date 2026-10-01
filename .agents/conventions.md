@@ -1,4 +1,4 @@
-# Socketry Workspace Conventions
+# Conventions
 
 - Keep shared Rust guidance in the `bake-agent-context` package; this file records workspace-specific boundaries.
 - Keep `socketry` as the facade and publish component packages with the `socketry-` prefix.
@@ -7,4 +7,4 @@
 - Keep native I/O backends under `scheduler/selector/` and runtime adapters alongside their runtime implementation.
 - Pass task owners explicitly when libraries spawn child tasks. Preserve barrier ownership, cancellation, and shutdown behavior.
 - Keep public implementation guidance in `context/implementation.md` and architecture decisions in `context/design.md`.
-- Keep repository-only conventions and publishing instructions under `.agents/`.
+- Keep repository-only conventions under `.agents/`; use the Bake Cargo agent context for the shared publishing process.
