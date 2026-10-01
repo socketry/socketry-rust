@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Adapter for an existing, running Tokio runtime with I/O and time enabled.
 //!
 //! This adapter owns the tasks it spawns, but does not own or drive the Tokio

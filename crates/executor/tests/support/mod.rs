@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;

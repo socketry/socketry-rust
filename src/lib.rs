@@ -1,5 +1,7 @@
-//! Foundational concurrency APIs for Socketry.
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
 
+//! Foundational concurrency APIs for Socketry.
 #![doc = include_str!("../readme.md")]
 
 pub use socketry_executor as executor;

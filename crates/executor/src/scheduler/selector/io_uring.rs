@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Linux completion reads/writes using a ring owned by a dedicated selector
 //! thread. Tasks communicate through owned requests and standard wakers, so
 //! operation futures remain Send and can migrate between executor workers.
@@ -11,7 +14,6 @@
 //! This initial implementation uses one channel request and one completion
 //! channel per operation. It does not yet pool operation records or register
 //! buffers with the kernel.
-
 use super::readiness::{self, Listener, Socket};
 use crate::scheduler::{BufferResult, Clock, FileIo, Interest, Network};
 use event_listener::{Event as CompletionEvent, Listener as _};

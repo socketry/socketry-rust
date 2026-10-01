@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Native selector operations exposed by Socketry schedulers and handles.
 use super::{Scheduler, SchedulerHandle};
 use crate::scheduler::selector::DefaultSelector;

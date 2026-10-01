@@ -1,5 +1,7 @@
-//! Scheduler implementations and their I/O selectors.
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
 
+//! Scheduler implementations and their I/O selectors.
 use std::fs::File;
 use std::future::Future;
 use std::io;

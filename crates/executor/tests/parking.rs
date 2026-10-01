@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering, fence};
 use loom::thread;

@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 mod support;
 
 use socketry_executor::{Scheduler, Spawn, SpawnError, TaskError, yield_now};
