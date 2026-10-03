@@ -110,9 +110,10 @@ commit `b520f3d`. Its native sources, stack allocation, nested synchronous
 Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`,
 or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a
 pull request. After review and merge, GitHub Actions publishes the release
-when the configured `crates-io` environment approves it. Follow the shared
+when the configured `crates-io` environment approves it, then creates or updates
+the matching GitHub Release from `releases.md`. See the shared
 [Releasing skill](https://github.com/socketry/socketry-project-rust/blob/main/context/releasing.md)
-for the standard process.
+for the standard release process.
 
 ## Releases
 
