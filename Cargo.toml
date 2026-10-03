@@ -9,7 +9,7 @@ manifest = "bake/Cargo.toml"
 reviewers = ["socketry/managers"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/socketry/socketry-rust"
@@ -25,7 +25,7 @@ readme = "readme.md"
 include = ["Cargo.toml", "readme.md", "license.md", "releases.md", "context/**", "src/**"]
 
 [dependencies]
-socketry-executor = { version = "0.1.1", path = "crates/executor", default-features = false }
+socketry-executor = { version = "0.1.2", path = "crates/executor", default-features = false }
 
 [features]
 default = ["native"]

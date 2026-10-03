@@ -317,7 +317,7 @@ impl Selector {
                 buffer,
             );
         }
-        let identifier = match self.controller.next_identifier.fetch_update(
+        let identifier = match self.controller.next_identifier.try_update(
             Ordering::Relaxed,
             Ordering::Relaxed,
             |identifier| (identifier < CANCEL_TAG - 1).then_some(identifier + 1),
