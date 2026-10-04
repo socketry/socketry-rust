@@ -50,6 +50,20 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
+    fn reserve_identifier(registry: &mut Registry, owner: &Owner) -> Result<u64, SpawnError> {
+        if registry.closed {
+            return Err(SpawnError::SchedulerClosed);
+        }
+        if owner.closed.load(Ordering::Acquire) {
+            return Err(SpawnError::OwnerClosed);
+        }
+        let identifier = registry.next_identifier;
+        registry.next_identifier = identifier
+            .checked_add(1)
+            .ok_or(SpawnError::IdentifiersExhausted)?;
+        Ok(identifier)
+    }
+
     pub(crate) fn spawn<FutureType>(
         self: &Arc<Self>,
         owner: &Arc<Owner>,
@@ -63,16 +77,7 @@ impl Shared {
             .registry
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if registry.closed {
-            return Err(SpawnError::SchedulerClosed);
-        }
-        if owner.closed.load(Ordering::Acquire) {
-            return Err(SpawnError::OwnerClosed);
-        }
-        let identifier = registry.next_identifier;
-        registry.next_identifier = identifier
-            .checked_add(1)
-            .ok_or(SpawnError::IdentifiersExhausted)?;
+        let identifier = Self::reserve_identifier(&mut registry, owner)?;
         let state = Arc::new(TaskState {
             identifier,
             scheduler: Arc::downgrade(self),
@@ -326,6 +331,17 @@ impl Scheduler {
 
     /// Start a specified, nonzero number of workers.
     pub fn with_workers(worker_count: usize) -> io::Result<Self> {
+        Self::with_worker_spawner(worker_count, |shared, identifier, queue| {
+            thread::Builder::new()
+                .name(format!("socketry-worker-{identifier}"))
+                .spawn(move || worker::run(shared, identifier, queue))
+        })
+    }
+
+    fn with_worker_spawner(
+        worker_count: usize,
+        mut spawn_worker: impl FnMut(Arc<Shared>, usize, Worker<Runnable>) -> io::Result<JoinHandle<()>>,
+    ) -> io::Result<Self> {
         if worker_count == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -358,9 +374,7 @@ impl Scheduler {
         };
         for (identifier, queue) in queues.into_iter().enumerate() {
             let shared = Arc::clone(&scheduler.handle.shared);
-            let thread = thread::Builder::new()
-                .name(format!("socketry-worker-{identifier}"))
-                .spawn(move || worker::run(shared, identifier, queue))?;
+            let thread = spawn_worker(shared, identifier, queue)?;
             scheduler.workers.push(thread);
         }
         Ok(scheduler)
@@ -509,3 +523,6 @@ impl Drop for SchedulerScope {
         CURRENT_SCHEDULER.with(|current| current.replace(std::mem::take(&mut self.0)));
     }
 }
+
+#[cfg(test)]
+mod tests;

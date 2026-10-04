@@ -1,7 +1,8 @@
 # Releases
 
-## Unreleased
+## v0.1.3
 
+- Use the shared Socketry Project tasks and update agent context setup guidance.
 
 ## v0.1.2
 

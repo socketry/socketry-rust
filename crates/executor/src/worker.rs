@@ -94,10 +94,9 @@ fn search(shared: &Shared, local: &LocalWorker, iteration: usize) -> Steal<Runna
     let mut retry = false;
     if iteration.is_multiple_of(EXTERNAL_INTERVAL) {
         for queue in [&shared.ready, incoming] {
-            match queue.steal_batch_and_pop(&local.ready) {
-                Steal::Success(runnable) => return Steal::Success(runnable),
-                Steal::Retry => retry = true,
-                Steal::Empty => {}
+            if let Some(runnable) = take_stolen(queue.steal_batch_and_pop(&local.ready), &mut retry)
+            {
+                return Steal::Success(runnable);
             }
         }
     }
@@ -105,10 +104,8 @@ fn search(shared: &Shared, local: &LocalWorker, iteration: usize) -> Steal<Runna
         return Steal::Success(runnable);
     }
     for queue in [incoming, &shared.ready] {
-        match queue.steal_batch_and_pop(&local.ready) {
-            Steal::Success(runnable) => return Steal::Success(runnable),
-            Steal::Retry => retry = true,
-            Steal::Empty => {}
+        if let Some(runnable) = take_stolen(queue.steal_batch_and_pop(&local.ready), &mut retry) {
+            return Steal::Success(runnable);
         }
     }
     // Only steal after exhausting this worker's own work. Rotate the first
@@ -123,19 +120,90 @@ fn search(shared: &Shared, local: &LocalWorker, iteration: usize) -> Steal<Runna
             continue;
         }
         let worker = &shared.workers[victim];
-        match worker.stealer.steal_batch_and_pop(&local.ready) {
-            Steal::Success(runnable) => return Steal::Success(runnable),
-            Steal::Retry => retry = true,
-            Steal::Empty => {}
+        if let Some(runnable) =
+            take_stolen(worker.stealer.steal_batch_and_pop(&local.ready), &mut retry)
+        {
+            return Steal::Success(runnable);
         }
         // Remote wakes remain stealable while the previous worker is busy.
-        match worker.incoming.steal_batch_and_pop(&local.ready) {
-            Steal::Success(runnable) => return Steal::Success(runnable),
-            Steal::Retry => retry = true,
-            Steal::Empty => {}
+        if let Some(runnable) = take_stolen(
+            worker.incoming.steal_batch_and_pop(&local.ready),
+            &mut retry,
+        ) {
+            return Steal::Success(runnable);
         }
     }
     if retry { Steal::Retry } else { Steal::Empty }
+}
+
+fn take_stolen<Value>(result: Steal<Value>, retry: &mut bool) -> Option<Value> {
+    match result {
+        Steal::Success(value) => Some(value),
+        Steal::Retry => {
+            *retry = true;
+            None
+        }
+        Steal::Empty => None,
+    }
+}
+
+enum IdleSearch {
+    Runnable(Runnable),
+    Retry,
+    Empty,
+}
+
+enum SearchResult {
+    Runnable(Runnable),
+    Retry,
+    Empty,
+}
+
+fn classify_search(result: Steal<Runnable>) -> SearchResult {
+    match result {
+        Steal::Success(runnable) => SearchResult::Runnable(runnable),
+        Steal::Retry => {
+            thread::yield_now();
+            SearchResult::Retry
+        }
+        Steal::Empty => SearchResult::Empty,
+    }
+}
+
+fn finish_idle_search(
+    worker: &WorkerState,
+    idle_workers: &std::sync::atomic::AtomicUsize,
+    result: Steal<Runnable>,
+    should_park: impl FnOnce() -> bool,
+    park: impl FnOnce(),
+) -> IdleSearch {
+    match result {
+        Steal::Success(runnable) => {
+            worker.sleeping.store(false, Ordering::SeqCst);
+            idle_workers.fetch_sub(1, Ordering::SeqCst);
+            IdleSearch::Runnable(runnable)
+        }
+        Steal::Retry => {
+            worker.sleeping.store(false, Ordering::SeqCst);
+            idle_workers.fetch_sub(1, Ordering::SeqCst);
+            IdleSearch::Retry
+        }
+        Steal::Empty => {
+            if should_park() {
+                park();
+            }
+            worker.sleeping.store(false, Ordering::SeqCst);
+            idle_workers.fetch_sub(1, Ordering::SeqCst);
+            IdleSearch::Empty
+        }
+    }
+}
+
+fn take_idle_runnable(result: IdleSearch) -> Option<Runnable> {
+    match result {
+        IdleSearch::Runnable(runnable) => Some(runnable),
+        IdleSearch::Retry | IdleSearch::Empty => None,
+    }
 }
 
 fn find_work(shared: &Shared, iteration: usize) -> Steal<Runnable> {
@@ -171,41 +239,32 @@ pub(crate) fn run(shared: Arc<Shared>, identifier: usize, ready: Worker<Runnable
         if shared.finished() {
             break;
         }
-        let runnable = match find_work(&shared, iteration) {
-            Steal::Success(runnable) => runnable,
-            Steal::Retry => {
-                thread::yield_now();
-                continue;
-            }
-            Steal::Empty => {
-                worker.sleeping.store(true, Ordering::SeqCst);
-                shared.idle_workers.fetch_add(1, Ordering::SeqCst);
-                // Pair with the enqueuer's fence: either this search observes
-                // its queued work, or the enqueuer observes an idle worker.
-                std::sync::atomic::fence(Ordering::SeqCst);
-                // Recheck after publishing the sleeping flag. An unpark token
-                // remains available if work arrives immediately before park().
-                match find_work(&shared, iteration) {
-                    Steal::Success(runnable) => {
-                        worker.sleeping.store(false, Ordering::SeqCst);
-                        shared.idle_workers.fetch_sub(1, Ordering::SeqCst);
-                        runnable
-                    }
-                    Steal::Retry => {
-                        worker.sleeping.store(false, Ordering::SeqCst);
-                        shared.idle_workers.fetch_sub(1, Ordering::SeqCst);
-                        continue;
-                    }
-                    Steal::Empty => {
-                        if !shared.finished() {
-                            thread::park();
-                        }
-                        worker.sleeping.store(false, Ordering::SeqCst);
-                        shared.idle_workers.fetch_sub(1, Ordering::SeqCst);
-                        continue;
-                    }
-                }
-            }
+        let search_result = classify_search(find_work(&shared, iteration));
+        let should_park = matches!(&search_result, SearchResult::Empty);
+        let runnable = match search_result {
+            SearchResult::Runnable(runnable) => Some(runnable),
+            SearchResult::Retry | SearchResult::Empty => None,
+        };
+        let runnable = if should_park {
+            worker.sleeping.store(true, Ordering::SeqCst);
+            shared.idle_workers.fetch_add(1, Ordering::SeqCst);
+            // Pair with the enqueuer's fence: either this search observes
+            // its queued work, or the enqueuer observes an idle worker.
+            std::sync::atomic::fence(Ordering::SeqCst);
+            // Recheck after publishing the sleeping flag. An unpark token
+            // remains available if work arrives immediately before park().
+            take_idle_runnable(finish_idle_search(
+                worker,
+                &shared.idle_workers,
+                find_work(&shared, iteration),
+                || !shared.finished(),
+                thread::park,
+            ))
+        } else {
+            runnable
+        };
+        let Some(runnable) = runnable else {
+            continue;
         };
         runnable
             .metadata()
@@ -233,3 +292,6 @@ pub(crate) fn run(shared: Arc<Shared>, identifier: usize, ready: Worker<Runnable
     }
     CURRENT_WORKER.with(|current| current.take());
 }
+
+#[cfg(test)]
+mod tests;

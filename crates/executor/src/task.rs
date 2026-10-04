@@ -202,6 +202,9 @@ impl<FutureType: Future> Future for TaskFuture<FutureType> {
     }
 }
 
+#[cfg(test)]
+mod tests;
+
 /// Cooperatively reschedule the current future once.
 /// Works with any executor implementing the standard future/waker contract.
 pub async fn yield_now() {

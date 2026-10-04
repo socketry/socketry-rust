@@ -180,6 +180,29 @@ fn cancellation_method_awaits_cleanup() {
 }
 
 #[test]
+fn cancelled_tasks_report_finished_state_and_reject_late_cancellation() {
+    let scheduler = Scheduler::with_workers(1).unwrap();
+    let (started, waiting) = std::sync::mpsc::channel();
+    let handle = scheduler
+        .spawn(async move {
+            started.send(()).unwrap();
+            pending::<()>().await;
+        })
+        .unwrap();
+    let task = handle.task();
+
+    waiting.recv().unwrap();
+    assert!(!handle.is_finished());
+    assert!(task.cancel());
+    assert!(matches!(
+        scheduler.block_on(handle),
+        Err(TaskError::Cancelled)
+    ));
+    assert!(task.is_finished());
+    assert!(!task.cancel());
+}
+
+#[test]
 fn child_cannot_wait_for_its_own_barrier() {
     let scheduler = Scheduler::with_workers(1).unwrap();
     let barrier = Arc::new(scheduler.barrier());

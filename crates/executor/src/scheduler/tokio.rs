@@ -117,9 +117,7 @@ impl Shared {
             false
         };
         drop(registry);
-        if cancel {
-            inner.abort();
-        }
+        abort_if_cancelled(cancel, || inner.abort());
         Ok(TaskHandle { inner })
     }
 
@@ -163,6 +161,67 @@ impl Shared {
             Ok(())
         }
     }
+}
+
+fn register_socket_with(
+    runtime: &Handle,
+    socket: TcpStream,
+    set_nonblocking: impl FnOnce(&TcpStream) -> io::Result<()>,
+    convert: impl FnOnce(TcpStream) -> io::Result<::tokio::net::TcpStream>,
+) -> io::Result<Socket> {
+    set_nonblocking(&socket)?;
+    let _scope = runtime.enter();
+    Ok(Socket {
+        inner: Arc::new(convert(socket)?),
+        runtime: runtime.id(),
+    })
+}
+
+fn register_listener_with(
+    runtime: &Handle,
+    listener: TcpListener,
+    set_nonblocking: impl FnOnce(&TcpListener) -> io::Result<()>,
+    convert: impl FnOnce(TcpListener) -> io::Result<::tokio::net::TcpListener>,
+) -> io::Result<Listener> {
+    set_nonblocking(&listener)?;
+    let _scope = runtime.enter();
+    Ok(Listener {
+        inner: convert(listener)?,
+        runtime: runtime.id(),
+    })
+}
+
+async fn connect_with<FutureType>(
+    runtime: Handle,
+    runtime_identifier: ::tokio::runtime::Id,
+    future: FutureType,
+) -> io::Result<Socket>
+where
+    FutureType: Future<Output = io::Result<::tokio::net::TcpStream>>,
+{
+    let inner = InRuntime { runtime, future }.await?;
+    Ok(Socket {
+        inner: Arc::new(inner),
+        runtime: runtime_identifier,
+    })
+}
+
+async fn accept_with<FutureType>(
+    runtime: Handle,
+    runtime_identifier: ::tokio::runtime::Id,
+    future: FutureType,
+) -> io::Result<(Socket, SocketAddr)>
+where
+    FutureType: Future<Output = io::Result<(::tokio::net::TcpStream, SocketAddr)>>,
+{
+    let (inner, address) = InRuntime { runtime, future }.await?;
+    Ok((
+        Socket {
+            inner: Arc::new(inner),
+            runtime: runtime_identifier,
+        },
+        address,
+    ))
 }
 
 struct Completion {
@@ -210,6 +269,80 @@ impl<FutureType: Future> Future for TrackedFuture<FutureType> {
         );
         this.future.poll(context).map(Ok)
     }
+}
+
+fn abort_if_cancelled(cancelled: bool, abort: impl FnOnce()) {
+    if cancelled {
+        abort();
+    }
+}
+
+async fn read_with<Read, Readable, ReadableFuture>(
+    buffer: &mut [u8],
+    mut read: Read,
+    mut readable: Readable,
+) -> io::Result<usize>
+where
+    Read: FnMut(&mut [u8]) -> io::Result<usize>,
+    Readable: FnMut() -> ReadableFuture,
+    ReadableFuture: Future<Output = io::Result<()>>,
+{
+    loop {
+        match read(buffer) {
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if let Err(error) = readable().await {
+                    break Err(error);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => break result,
+        }
+    }
+}
+
+async fn write_with<Write, Writable, WritableFuture>(
+    buffer: &[u8],
+    mut write: Write,
+    mut writable: Writable,
+) -> io::Result<usize>
+where
+    Write: FnMut(&[u8]) -> io::Result<usize>,
+    Writable: FnMut() -> WritableFuture,
+    WritableFuture: Future<Output = io::Result<()>>,
+{
+    loop {
+        match write(buffer) {
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if let Err(error) = writable().await {
+                    break Err(error);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => break result,
+        }
+    }
+}
+
+fn file_operation_result<Output>(
+    result: Result<io::Result<Output>, ::tokio::task::JoinError>,
+) -> io::Result<Output> {
+    match result {
+        Ok(result) => result,
+        Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+        Err(error) => Err(io::Error::new(io::ErrorKind::Interrupted, error)),
+    }
+}
+
+fn with_file_buffer<Output>(
+    buffer: &Mutex<Vec<u8>>,
+    operation: impl FnOnce(&mut Vec<u8>) -> io::Result<Output>,
+) -> io::Result<Output> {
+    let mut buffer = buffer.lock().unwrap_or_else(|error| error.into_inner());
+    operation(&mut buffer)
+}
+
+fn take_file_buffer(buffer: &Mutex<Vec<u8>>) -> Vec<u8> {
+    std::mem::take(&mut *buffer.lock().unwrap_or_else(|error| error.into_inner()))
 }
 
 /// An awaitable Tokio task result. Drop abandons the result without cancelling
@@ -478,53 +611,44 @@ impl Network for SchedulerHandle {
 
     fn register_socket(&self, socket: TcpStream) -> io::Result<Socket> {
         self.shared.check_open()?;
-        socket.set_nonblocking(true)?;
-        let _scope = self.shared.runtime.enter();
-        Ok(Socket {
-            inner: Arc::new(::tokio::net::TcpStream::from_std(socket)?),
-            runtime: self.shared.runtime.id(),
-        })
+        register_socket_with(
+            &self.shared.runtime,
+            socket,
+            |socket| socket.set_nonblocking(true),
+            ::tokio::net::TcpStream::from_std,
+        )
     }
 
     fn register_listener(&self, listener: TcpListener) -> io::Result<Listener> {
         self.shared.check_open()?;
-        listener.set_nonblocking(true)?;
-        let _scope = self.shared.runtime.enter();
-        Ok(Listener {
-            inner: ::tokio::net::TcpListener::from_std(listener)?,
-            runtime: self.shared.runtime.id(),
-        })
+        register_listener_with(
+            &self.shared.runtime,
+            listener,
+            |listener| listener.set_nonblocking(true),
+            ::tokio::net::TcpListener::from_std,
+        )
     }
 
     async fn connect(&self, address: SocketAddr) -> io::Result<Socket> {
         self.shared.check_open()?;
-        let inner = InRuntime {
-            runtime: self.shared.runtime.clone(),
-            future: ::tokio::net::TcpStream::connect(address),
-        }
-        .await?;
-        Ok(Socket {
-            inner: Arc::new(inner),
-            runtime: self.shared.runtime.id(),
-        })
+        connect_with(
+            self.shared.runtime.clone(),
+            self.shared.runtime.id(),
+            ::tokio::net::TcpStream::connect(address),
+        )
+        .await
     }
 
     async fn accept(&self, listener: &Listener) -> io::Result<(Socket, SocketAddr)> {
         self.check_runtime(listener.runtime)?;
         // Accept registers a new stream with Tokio's current runtime. Enter
         // our runtime for each poll, even when another executor polls us.
-        let (inner, address) = InRuntime {
-            runtime: self.shared.runtime.clone(),
-            future: listener.inner.accept(),
-        }
-        .await?;
-        Ok((
-            Socket {
-                inner: Arc::new(inner),
-                runtime: listener.runtime,
-            },
-            address,
-        ))
+        accept_with(
+            self.shared.runtime.clone(),
+            listener.runtime,
+            listener.inner.accept(),
+        )
+        .await
     }
 
     async fn io_read(&self, socket: &Socket, mut buffer: Vec<u8>) -> BufferResult {
@@ -534,17 +658,12 @@ impl Network for SchedulerHandle {
         if buffer.is_empty() {
             return (Ok(0), buffer);
         }
-        let result = loop {
-            match socket.inner.try_read(&mut buffer) {
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if let Err(error) = socket.inner.readable().await {
-                        break Err(error);
-                    }
-                }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                result => break result,
-            }
-        };
+        let result = read_with(
+            &mut buffer,
+            |buffer| socket.inner.try_read(buffer),
+            || socket.inner.readable(),
+        )
+        .await;
         (result, buffer)
     }
 
@@ -555,17 +674,12 @@ impl Network for SchedulerHandle {
         if buffer.is_empty() {
             return (Ok(0), buffer);
         }
-        let result = loop {
-            match socket.inner.try_write(&buffer) {
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if let Err(error) = socket.inner.writable().await {
-                        break Err(error);
-                    }
-                }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                result => break result,
-            }
-        };
+        let result = write_with(
+            &buffer,
+            |buffer| socket.inner.try_write(buffer),
+            || socket.inner.writable(),
+        )
+        .await;
         (result, buffer)
     }
 
@@ -607,22 +721,17 @@ impl SchedulerHandle {
             .shared
             .runtime
             .spawn_blocking(move || {
-                let mut buffer = operation_buffer
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                if write {
-                    super::file::write_at(&file, &buffer, offset)
-                } else {
-                    super::file::read_at(&file, &mut buffer, offset)
-                }
+                with_file_buffer(&operation_buffer, |buffer| {
+                    if write {
+                        super::file::write_at(&file, buffer, offset)
+                    } else {
+                        super::file::read_at(&file, buffer, offset)
+                    }
+                })
             })
             .await;
-        let result = match result {
-            Ok(result) => result,
-            Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
-            Err(error) => Err(io::Error::new(io::ErrorKind::Interrupted, error)),
-        };
-        let buffer = std::mem::take(&mut *buffer.lock().unwrap_or_else(|error| error.into_inner()));
+        let result = file_operation_result(result);
+        let buffer = take_file_buffer(&buffer);
         (result, buffer)
     }
 }
@@ -726,3 +835,6 @@ impl Clock for Scheduler {
         self.handle.sleep(duration).await;
     }
 }
+
+#[cfg(test)]
+mod tests;

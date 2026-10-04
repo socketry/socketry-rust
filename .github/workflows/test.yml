@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  coverage:
+    name: Formatting, Clippy, and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy, llvm-tools-preview, rustfmt
+          cache-shared-key: coverage-cargo-install-v1
+      - name: Install Bake launcher
+        run: cargo install socketry-cargo-bake --locked
+      - name: Install coverage tool
+        run: cargo install cargo-llvm-cov --locked
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run tests and require complete line coverage
+        run: cargo bake --locked test:coverage --all-targets true
+
   test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}

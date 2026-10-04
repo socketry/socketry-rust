@@ -1,4 +1,4 @@
-# socketry
+# `socketry`
 
 Foundational concurrency APIs for Rust projects in the Socketry ecosystem.
 
@@ -120,6 +120,10 @@ for the standard release process.
 <!-- bake-readme:releases:start -->
 See [releases.md](releases.md) for the full release history.
 
+### v0.1.3
+
+- Use the shared Socketry Project tasks and update agent context setup guidance.
+
 ### v0.1.2
 
 - Use the shared `socketry-project` Releasing skill for the standard release
@@ -132,29 +136,18 @@ See [releases.md](releases.md) for the full release history.
 - Add Bake Agent Context tasks to the repository's development workspace.
 <!-- bake-readme:releases:end -->
 
-## See Also
-
-- [socketry](https://github.com/socketry/socketry-rust) — Foundational concurrency APIs for Socketry <!-- bake-readme:package -->
-
 ## Contributing
 
 Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-rust).
 
 ### Agent Context
 
-Before contributing, read `agents.md` and the relevant context files it links. If `agents.md` is missing or out of date, run `cargo bake agent:context:install` to install context from dependencies and update the index.
+Run `cargo bake agent:context:install` to install shared context and skills.
+Read `.agents/context/index.md` to find relevant guides, follow `agents.md` if
+present, and apply skills under `.agents/skills/`. See the [Agent Context guide]
+for guidance on organizing package context and repository-only instructions.
 
-This crate includes an [implementation guide](context/implementation.md) and a
-[design guide](context/design.md). The private `bake/` package links Bake Cargo,
-Bake Agent Context, and their companion task crates. Its version-bump hook
-updates the license, release notes, and generated Readme sections. Install
-dependency context into the repository with:
+[Agent Context guide]: https://github.com/socketry/bake-agent-context-rust/blob/main/context/agent-context.md
 
-```sh
-cargo bake agent:context:install
-```
-
-Install the launcher once with `cargo install socketry-cargo-bake --locked`.
-The generated `.agents/context/` directory is ignored by Git. Repository-only
-conventions remain under `.agents/` in the source checkout; publishing guidance
-is included in Bake Cargo agent context.
+The crate publishes [implementation](context/implementation.md) and
+[design](context/design.md) guides for its architecture and development.
