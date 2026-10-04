@@ -174,8 +174,8 @@ fn finish_idle_search(
     worker: &WorkerState,
     idle_workers: &std::sync::atomic::AtomicUsize,
     result: Steal<Runnable>,
-    should_park: impl FnOnce() -> bool,
-    park: impl FnOnce(),
+    should_park: &dyn Fn() -> bool,
+    park: &dyn Fn(),
 ) -> IdleSearch {
     match result {
         Steal::Success(runnable) => {
@@ -257,8 +257,8 @@ pub(crate) fn run(shared: Arc<Shared>, identifier: usize, ready: Worker<Runnable
                 worker,
                 &shared.idle_workers,
                 find_work(&shared, iteration),
-                || !shared.finished(),
-                thread::park,
+                &|| !shared.finished(),
+                &thread::park,
             ))
         } else {
             runnable

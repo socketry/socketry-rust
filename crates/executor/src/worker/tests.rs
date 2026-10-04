@@ -64,8 +64,8 @@ fn idle_retry_restores_worker_sleep_state() {
             &worker,
             &idle_workers,
             Steal::Retry,
-            || panic!("retry results do not check whether the worker should park"),
-            || panic!("retry results do not park"),
+            &|| panic!("retry results do not check whether the worker should park"),
+            &|| panic!("retry results do not park"),
         ),
         IdleSearch::Retry
     ));
@@ -83,8 +83,8 @@ fn idle_success_restores_worker_state_and_returns_the_runnable() {
         &worker,
         &idle_workers,
         Steal::Success(runnable()),
-        || panic!("successful results do not check whether the worker should park"),
-        || panic!("successful results do not park"),
+        &|| panic!("successful results do not check whether the worker should park"),
+        &|| panic!("successful results do not park"),
     ) {
         IdleSearch::Runnable(runnable) => runnable,
         IdleSearch::Retry | IdleSearch::Empty => panic!("successful steal was discarded"),
@@ -100,13 +100,9 @@ fn idle_empty_search_skips_park_after_shutdown() {
     let idle_workers = AtomicUsize::new(1);
     worker.sleeping.store(true, Ordering::SeqCst);
 
-    let result = finish_idle_search(
-        &worker,
-        &idle_workers,
-        Steal::Empty,
-        || false,
-        || panic!("a shut down scheduler must not park its worker"),
-    );
+    let result = finish_idle_search(&worker, &idle_workers, Steal::Empty, &|| false, &|| {
+        panic!("a shut down scheduler must not park its worker")
+    });
 
     assert!(matches!(result, IdleSearch::Empty));
     assert!(!worker.sleeping.load(Ordering::SeqCst));
@@ -120,13 +116,9 @@ fn idle_empty_search_parks_while_scheduler_is_running() {
     let parked = AtomicBool::new(false);
     worker.sleeping.store(true, Ordering::SeqCst);
 
-    let result = finish_idle_search(
-        &worker,
-        &idle_workers,
-        Steal::Empty,
-        || true,
-        || parked.store(true, Ordering::SeqCst),
-    );
+    let result = finish_idle_search(&worker, &idle_workers, Steal::Empty, &|| true, &|| {
+        parked.store(true, Ordering::SeqCst)
+    });
 
     assert!(matches!(result, IdleSearch::Empty));
     assert!(parked.load(Ordering::SeqCst));
