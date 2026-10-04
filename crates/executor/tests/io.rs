@@ -262,13 +262,15 @@ mod native {
         let task = scheduler
             .spawn(async move {
                 let mut read = pin!(handle.io_read(&socket, vec![0; 1024]));
-                poll_fn(|context| {
+                let mut started = Some(started);
+                poll_fn(|context| -> Poll<()> {
                     assert!(read.as_mut().poll(context).is_pending());
-                    started.send(()).unwrap();
-                    Poll::Ready(())
+                    if let Some(started) = started.take() {
+                        started.send(()).unwrap();
+                    }
+                    Poll::Pending
                 })
-                .await;
-                read.await
+                .await
             })
             .unwrap();
         support::receive(&waiting);
