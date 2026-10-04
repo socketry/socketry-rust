@@ -33,11 +33,23 @@ fn closing_shared_state_is_idempotent() {
 fn closing_scheduler_waits_for_cancelled_futures_to_be_destroyed() {
     let scheduler = Scheduler::with_workers(1).unwrap();
     let shared = Arc::clone(&scheduler.handle.shared);
-    let task = scheduler.spawn(std::future::pending::<()>()).unwrap();
+    let (started_sender, started_receiver) = std::sync::mpsc::channel();
+    let (continue_sender, continue_receiver) = std::sync::mpsc::channel();
+    let task = scheduler
+        .spawn(async move {
+            started_sender.send(()).unwrap();
+            continue_receiver.recv().unwrap();
+            std::future::pending::<()>().await;
+        })
+        .unwrap();
+
+    // Hold the future inside its first poll while the scheduler closes it.
+    started_receiver.recv().unwrap();
 
     shared.close();
 
     assert!(!shared.finished());
+    continue_sender.send(()).unwrap();
     assert!(matches!(
         scheduler.block_on(task),
         Err(TaskError::Cancelled)
