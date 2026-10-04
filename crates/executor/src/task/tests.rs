@@ -3,7 +3,7 @@
 
 use super::{Completion, Task, TaskError, TaskState, UNASSIGNED_WORKER};
 use crate::owner::Owner;
-use std::future::{Future, ready};
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::{Context, Poll, Waker};
@@ -64,11 +64,11 @@ fn completion_marks_finished_after_its_scheduler_is_gone() {
 #[test]
 fn dropping_a_task_handle_detaches_without_cancelling_the_task() {
     let scheduler = crate::scheduler::Scheduler::with_workers(1).unwrap();
-    let handle = scheduler.spawn(ready(42)).unwrap();
+    let handle = scheduler.spawn(std::future::pending::<()>()).unwrap();
     let task = handle.task();
 
     drop(handle);
-    assert!(!task.is_finished());
+    assert!(task.cancel());
 
     scheduler.run();
 
