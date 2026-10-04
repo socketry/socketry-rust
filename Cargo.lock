@@ -67,9 +67,9 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "bake"
-version = "0.17.4"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6869a189d61a37055ab2404f5423ff6dc9bc65d81438a83df9408d4aaa6b72c2"
+checksum = "cbed34a1e40a3a5893a12c47de45006de3ae53112db64c0919a6e49c1a38d7e0"
 dependencies = [
  "bake-macros",
  "linkme",
@@ -79,9 +79,9 @@ dependencies = [
 
 [[package]]
 name = "bake-agent-context"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22477c95d0a8f746a57d5044e8e9fcb45827c08a5dc0b5b353473e236aeeffa9"
+checksum = "386910c08614146515e754bf6208aedba73abdb9a2767e8bd5c2d997845c84ef"
 dependencies = [
  "bake",
  "serde",
@@ -120,9 +120,9 @@ dependencies = [
 
 [[package]]
 name = "bake-macros"
-version = "0.17.4"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88c895e7c17c9da57d980358ac5a367ad44912599f167f0e78238fd5c399ecf0"
+checksum = "5b801275922e3bbc727ecdbb809f1a82591744cad907c9e915bdfa9b28bf001f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -131,9 +131,9 @@ dependencies = [
 
 [[package]]
 name = "bake-readme"
-version = "0.1.5"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8c791e3a2f2492b225c03f1bcf527612bc0d1c07ecfcb69d7eced9400af787"
+checksum = "9cbf2eb3710006c27705edd4186c53bc85bcca4fa80ea927a3718660e59833f2"
 dependencies = [
  "bake",
  "serde_json",
@@ -154,9 +154,9 @@ dependencies = [
 
 [[package]]
 name = "bake-test-rust"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3c27b23073ffd24e48016e88e221982115ad780f563b0d8e95ba8af1a73eaf4"
+checksum = "1a9c5b715c668d525d144fedae81c64c1871de6f4d01bb9ce76376ce85240ef8"
 dependencies = [
  "bake",
  "serde_json",
