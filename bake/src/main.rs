@@ -1,21 +1,31 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use bake::{Context, Registry, Result};
-use bake_agent_context as _;
-use bake_cargo as _;
-use bake_license as _;
-use bake_readme as _;
-use bake_releases as _;
+use bake::{Registry, Result};
 
-#[bake::task(name = "cargo:after_version_bump")]
-fn after_version_bump(context: &mut Context, version: String) -> Result<()> {
-    context.call("license:update", &[])?;
-    context.call("releases:update", &[&format!("v{version}")])?;
-    context.call("readme:update", &[])?;
-    Ok(())
+fn run(registry: Result<Registry>) -> Result<()> {
+    registry?.run()
 }
 
 fn main() -> Result<()> {
-    Registry::discover()?.run()
+    run(Registry::discover())
+}
+
+#[path = "bake_generated_tasks/mod.rs"]
+mod bake_generated_tasks;
+
+#[cfg(test)]
+mod tests {
+    use super::run;
+    use bake::Error;
+
+    #[test]
+    fn registry_discovery_errors_are_returned() {
+        let result = run(Err(Error::new("injected discovery failure")));
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "injected discovery failure"
+        );
+    }
 }

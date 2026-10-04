@@ -50,27 +50,38 @@ impl Selector {
     }
 }
 
+fn wrap_socket(socket: io::Result<Async<TcpStream>>) -> io::Result<Socket> {
+    socket.map(|socket| Socket(Arc::new(socket)))
+}
+
+fn wrap_listener(listener: io::Result<Async<TcpListener>>) -> io::Result<Listener> {
+    listener.map(Listener)
+}
+
+fn wrap_accepted(
+    accepted: io::Result<(Async<TcpStream>, SocketAddr)>,
+) -> io::Result<(Socket, SocketAddr)> {
+    accepted.map(|(socket, address)| (Socket(Arc::new(socket)), address))
+}
+
 impl Network for Selector {
     type Socket = Socket;
     type Listener = Listener;
 
     fn register_socket(&self, socket: TcpStream) -> io::Result<Socket> {
-        Ok(Socket(Arc::new(Async::new(socket)?)))
+        wrap_socket(Async::new(socket))
     }
 
     fn register_listener(&self, listener: TcpListener) -> io::Result<Listener> {
-        Ok(Listener(Async::new(listener)?))
+        wrap_listener(Async::new(listener))
     }
 
     async fn connect(&self, address: SocketAddr) -> io::Result<Socket> {
-        Ok(Socket(Arc::new(
-            Async::<TcpStream>::connect(address).await?,
-        )))
+        wrap_socket(Async::<TcpStream>::connect(address).await)
     }
 
     async fn accept(&self, listener: &Listener) -> io::Result<(Socket, SocketAddr)> {
-        let (socket, address) = listener.0.accept().await?;
-        Ok((Socket(Arc::new(socket)), address))
+        wrap_accepted(listener.0.accept().await)
     }
 
     async fn io_read(&self, socket: &Socket, mut buffer: Vec<u8>) -> BufferResult {
@@ -125,3 +136,6 @@ impl Clock for Selector {
         async_io::Timer::after(duration).await;
     }
 }
+
+#[cfg(test)]
+mod tests;

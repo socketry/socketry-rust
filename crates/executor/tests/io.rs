@@ -47,6 +47,14 @@ fn socket_pair() -> (TcpStream, TcpStream) {
     (client, server)
 }
 
+#[cfg(feature = "tokio")]
+fn error_kind<ResultType>(result: io::Result<ResultType>) -> io::ErrorKind {
+    match result {
+        Ok(_) => panic!("operation unexpectedly succeeded"),
+        Err(error) => error.kind(),
+    }
+}
+
 async fn round_trip<SchedulerType>(scheduler: SchedulerType)
 where
     SchedulerType: Network + Spawn + Clock + Clone + 'static,
@@ -279,6 +287,113 @@ mod native {
             matches!(handle.register_socket(client), Err(error) if error.kind() == io::ErrorKind::BrokenPipe)
         );
     }
+
+    #[test]
+    fn scheduler_forwards_network_file_and_clock_operations() {
+        let scheduler = Scheduler::with_workers(2).unwrap();
+        let (listener, address) = listening_socket();
+        let listener = scheduler.register_listener(listener).unwrap();
+        assert_eq!(listener.local_addr().unwrap(), address);
+
+        let (accepted, client) = std::thread::scope(|scope| {
+            let connect = scope.spawn(|| scheduler.block_on(scheduler.connect(address)));
+            let accepted = scheduler
+                .block_on(scheduler.accept(&listener))
+                .expect("accept connected socket");
+            let client = connect.join().unwrap().expect("connect to listener");
+            (accepted, client)
+        });
+        let (server, peer_address) = accepted;
+        assert_eq!(client.peer_addr().unwrap(), address);
+        assert_eq!(server.local_addr().unwrap(), address);
+        assert_eq!(server.peer_addr().unwrap(), peer_address);
+
+        scheduler.block_on(async {
+            let (result, buffer) = scheduler.io_write(&client, vec![42]).await;
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(buffer, vec![42]);
+            scheduler
+                .io_wait(&server, Interest::Readable)
+                .await
+                .unwrap();
+            let (result, buffer) = scheduler.io_read(&server, vec![0]).await;
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(buffer, vec![42]);
+            scheduler
+                .io_wait(&client, Interest::Writable)
+                .await
+                .unwrap();
+            scheduler.sleep(std::time::Duration::ZERO).await;
+        });
+
+        let (registered_socket, _peer) = socket_pair();
+        let registered_socket = scheduler.register_socket(registered_socket).unwrap();
+        assert!(registered_socket.local_addr().is_ok());
+
+        let handle = scheduler.handle();
+        let selector = handle.selector().unwrap();
+        scheduler.block_on(selector.sleep(std::time::Duration::ZERO));
+        scheduler.block_on(within(&scheduler, positioned_files(&scheduler)));
+    }
+
+    #[test]
+    fn closed_scheduler_io_returns_errors_and_owned_buffers() {
+        let scheduler = Scheduler::with_workers(1).unwrap();
+        let handle = scheduler.handle();
+        let (client, _peer) = socket_pair();
+        let socket = handle.register_socket(client).unwrap();
+        let (raw_listener, address) = listening_socket();
+        let registered_listener = handle.register_listener(raw_listener).unwrap();
+        let file = Arc::new(File::open(std::env::current_exe().unwrap()).unwrap());
+        scheduler.shutdown();
+
+        let (client, _peer) = socket_pair();
+        assert!(matches!(
+            handle.register_socket(client),
+            Err(error) if error.kind() == io::ErrorKind::BrokenPipe
+        ));
+        let (raw_listener, _) = listening_socket();
+        assert!(matches!(
+            handle.register_listener(raw_listener),
+            Err(error) if error.kind() == io::ErrorKind::BrokenPipe
+        ));
+
+        let executor = Scheduler::with_workers(1).unwrap();
+        executor.block_on(async {
+            let error = match handle.connect(address).await {
+                Ok(_) => panic!("closed scheduler accepted a connection"),
+                Err(error) => error,
+            };
+            assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+
+            let error = match handle.accept(&registered_listener).await {
+                Ok(_) => panic!("closed scheduler accepted a listener"),
+                Err(error) => error,
+            };
+            assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(
+                handle
+                    .io_wait(&socket, Interest::Readable)
+                    .await
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::BrokenPipe
+            );
+
+            let (result, buffer) = handle.io_read(&socket, vec![1, 2]).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![1, 2]);
+            let (result, buffer) = handle.io_write(&socket, vec![3, 4]).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![3, 4]);
+            let (result, buffer) = handle.file_read_at(Arc::clone(&file), vec![5], 0).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![5]);
+            let (result, buffer) = handle.file_write_at(Arc::clone(&file), vec![6], 0).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![6]);
+        });
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -391,6 +506,9 @@ mod tokio_adapter {
             ));
             let panicked = scheduler.spawn(async { panic!("task panic") }).unwrap();
             assert!(matches!(panicked.await, Err(TaskError::Panicked(_))));
+
+            let pending = scheduler.spawn(std::future::pending::<()>()).unwrap();
+            drop(pending);
         });
         let handle = scheduler.handle();
         runtime.block_on(scheduler.shutdown());
@@ -398,6 +516,169 @@ mod tokio_adapter {
             handle.spawn(async {}),
             Err(SpawnError::SchedulerClosed)
         ));
+    }
+
+    #[test]
+    fn task_handles_report_completion_and_cancel_tasks() {
+        let runtime = runtime();
+        let scheduler = Scheduler::new(runtime.handle().clone());
+        let completed = scheduler.spawn(async { 42 }).unwrap();
+        assert!(!completed.is_finished());
+        runtime.block_on(async {
+            tokio::task::yield_now().await;
+            assert!(completed.is_finished());
+            assert_eq!(completed.await.unwrap(), 42);
+        });
+
+        let cancelled = scheduler.spawn(std::future::pending::<()>()).unwrap();
+        assert!(matches!(
+            runtime.block_on(cancelled.cancel()),
+            Err(TaskError::Cancelled)
+        ));
+        runtime.block_on(scheduler.shutdown());
+    }
+
+    #[test]
+    fn scheduler_methods_and_spawn_traits_forward_to_tokio() {
+        use socketry_executor::Spawn;
+
+        let runtime = runtime();
+        let scheduler = Arc::new(Scheduler::new(runtime.handle().clone()));
+        let (listener, address) = listening_socket();
+        let listener = scheduler.register_listener(listener).unwrap();
+        assert_eq!(listener.local_addr().unwrap(), address);
+
+        let server_scheduler = Arc::clone(&scheduler);
+        let server = scheduler
+            .spawn(async move {
+                let (socket, _) = server_scheduler.accept(&listener).await.unwrap();
+                assert_eq!(socket.local_addr().unwrap(), address);
+                assert!(socket.peer_addr().is_ok());
+                let (result, buffer) = server_scheduler.io_read(&socket, vec![0]).await;
+                assert_eq!(result.unwrap(), 1);
+                assert_eq!(buffer, vec![42]);
+                let (result, _) = server_scheduler.io_write(&socket, vec![24]).await;
+                assert_eq!(result.unwrap(), 1);
+            })
+            .unwrap();
+
+        runtime.block_on(async {
+            let client = scheduler.connect(address).await.unwrap();
+            assert!(client.local_addr().is_ok());
+            assert_eq!(client.peer_addr().unwrap(), address);
+            let (result, buffer) = scheduler.io_write(&client, vec![42]).await;
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(buffer, vec![42]);
+            scheduler
+                .io_wait(&client, Interest::Readable)
+                .await
+                .unwrap();
+            let (result, buffer) = scheduler.io_read(&client, vec![0]).await;
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(buffer, vec![24]);
+            scheduler
+                .io_wait(&client, Interest::Writable)
+                .await
+                .unwrap();
+            scheduler.sleep(std::time::Duration::ZERO).await;
+
+            let (result, buffer) = scheduler.io_read(&client, Vec::new()).await;
+            assert_eq!(result.unwrap(), 0);
+            assert!(buffer.is_empty());
+            let (result, buffer) = scheduler.io_write(&client, Vec::new()).await;
+            assert_eq!(result.unwrap(), 0);
+            assert!(buffer.is_empty());
+
+            let ordinary_task = Spawn::spawn(&*scheduler, async { 9 }).unwrap();
+            assert_eq!(ordinary_task.await.unwrap(), 9);
+
+            let barrier = scheduler.barrier();
+            let child = Spawn::spawn(&barrier, async { 7 }).unwrap();
+            barrier.close();
+            assert!(matches!(
+                barrier.spawn(async {}),
+                Err(SpawnError::OwnerClosed)
+            ));
+            assert_eq!(child.await.unwrap(), 7);
+            barrier.wait().await;
+        });
+
+        runtime.block_on(server).unwrap();
+        runtime.block_on(within(&*scheduler, positioned_files(&*scheduler)));
+        let scheduler = match Arc::try_unwrap(scheduler) {
+            Ok(scheduler) => scheduler,
+            Err(_) => panic!("scheduler still has outstanding references"),
+        };
+        runtime.block_on(scheduler.shutdown());
+    }
+
+    #[test]
+    fn shutdown_waits_for_owned_tasks_and_rejects_self_shutdown() {
+        let runtime = runtime();
+        let scheduler = Scheduler::new(runtime.handle().clone());
+        let handle = scheduler.handle();
+        let task = handle
+            .spawn(async move { scheduler.shutdown().await })
+            .unwrap();
+        assert!(matches!(
+            runtime.block_on(task),
+            Err(TaskError::Panicked(_))
+        ));
+    }
+
+    #[test]
+    fn closed_scheduler_returns_errors_and_preserves_buffers() {
+        let runtime = runtime();
+        let scheduler = Scheduler::new(runtime.handle().clone());
+        let handle = scheduler.handle();
+        let (client, _) = socket_pair();
+        let socket = handle.register_socket(client).unwrap();
+        let (listener, address) = listening_socket();
+        let listener = handle.register_listener(listener).unwrap();
+        let file = Arc::new(File::open(std::env::current_exe().unwrap()).unwrap());
+        runtime.block_on(scheduler.shutdown());
+
+        let (new_socket, _) = socket_pair();
+        assert_eq!(
+            error_kind(handle.register_socket(new_socket)),
+            io::ErrorKind::BrokenPipe
+        );
+        let (new_listener, _) = listening_socket();
+        assert_eq!(
+            error_kind(handle.register_listener(new_listener)),
+            io::ErrorKind::BrokenPipe
+        );
+
+        runtime.block_on(async {
+            assert_eq!(
+                error_kind(handle.connect(address).await),
+                io::ErrorKind::BrokenPipe
+            );
+            assert_eq!(
+                error_kind(handle.accept(&listener).await),
+                io::ErrorKind::BrokenPipe
+            );
+            assert_eq!(
+                handle
+                    .io_wait(&socket, Interest::Readable)
+                    .await
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::BrokenPipe
+            );
+            let (result, buffer) = handle.io_read(&socket, vec![1]).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![1]);
+            let (result, buffer) = handle.io_write(&socket, vec![2]).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![2]);
+            let (result, buffer) = handle.file_read_at(Arc::clone(&file), vec![3], 0).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![3]);
+            let (result, buffer) = handle.file_write_at(Arc::clone(&file), vec![4], 0).await;
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(buffer, vec![4]);
+        });
     }
 
     #[test]

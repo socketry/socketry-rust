@@ -11,39 +11,66 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::time::Duration;
 
+fn check_open(closed: bool) -> io::Result<()> {
+    if closed {
+        Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "scheduler is closed",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn copy_selector_error(error: &io::Error) -> io::Error {
+    io::Error::new(error.kind(), error.to_string())
+}
+
+#[cfg(all(feature = "io-uring", target_os = "linux"))]
+fn check_initialized_open(closed: bool, selector: &DefaultSelector) -> io::Result<()> {
+    if closed {
+        selector.close();
+    }
+    check_open(closed)
+}
+
+#[cfg(not(all(feature = "io-uring", target_os = "linux")))]
+fn check_initialized_open(closed: bool, _selector: &DefaultSelector) -> io::Result<()> {
+    check_open(closed)
+}
+
 impl SchedulerHandle {
     /// Lazily initialize this scheduler's compile-time selected I/O selector.
     pub fn selector(&self) -> io::Result<&DefaultSelector> {
-        if self
-            .shared
-            .closed
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "scheduler is closed",
-            ));
-        }
-        let selector = self
-            .shared
-            .selector
-            .get_or_init(DefaultSelector::new)
-            .as_ref()
-            .map_err(|error| io::Error::new(error.kind(), error.to_string()))?;
+        self.selector_with(DefaultSelector::new)
+    }
+
+    fn selector_with(
+        &self,
+        initialize: impl FnOnce() -> io::Result<DefaultSelector>,
+    ) -> io::Result<&DefaultSelector> {
+        check_open(
+            self.shared
+                .closed
+                .load(std::sync::atomic::Ordering::Acquire),
+        )?;
+        let selector = self.shared.selector.get_or_init(initialize);
+        self.initialized_selector(selector)
+    }
+
+    fn initialized_selector<'a>(
+        &self,
+        selector: &'a io::Result<DefaultSelector>,
+    ) -> io::Result<&'a DefaultSelector> {
+        let selector = selector.as_ref().map_err(copy_selector_error)?;
         // Shutdown may have raced lazy initialization. Do not leave a newly
         // constructed completion selector running after admission closes.
-        if self
-            .shared
-            .closed
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            #[cfg(all(feature = "io-uring", target_os = "linux"))]
-            selector.close();
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "scheduler is closed",
-            ));
-        }
+        check_initialized_open(
+            self.shared
+                .closed
+                .load(std::sync::atomic::Ordering::Acquire),
+            selector,
+        )?;
         Ok(selector)
     }
 }
@@ -158,3 +185,6 @@ impl Clock for Scheduler {
         self.handle.sleep(duration).await;
     }
 }
+
+#[cfg(test)]
+mod tests;
