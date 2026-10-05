@@ -5,5 +5,5 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-bake = "0.17.0"
-socketry-project = "0.3"
+bake = "0.18.0"
+socketry-project = ">=0.3.4"
