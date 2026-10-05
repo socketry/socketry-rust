@@ -3,7 +3,11 @@
 
 use super::*;
 use std::future::ready;
+use std::io::Read;
+use std::sync::mpsc;
 use std::task::{Context, Poll, Waker};
+use std::thread;
+use std::time::Duration;
 
 fn runtime() -> ::tokio::runtime::Runtime {
     ::tokio::runtime::Builder::new_current_thread()
@@ -192,6 +196,61 @@ fn task_identifier_exhaustion_is_reported() {
 }
 
 #[test]
+fn shutdown_cancels_a_task_registered_before_tokio_spawn() {
+    let runtime = runtime();
+    let scheduler = Scheduler::new(runtime.handle().clone());
+    let shared = Arc::clone(&scheduler.handle.shared);
+    let owner = Arc::new(Owner::new());
+    let (registered, wait_for_registration) = mpsc::sync_channel(0);
+    let (resume, wait_to_resume) = mpsc::sync_channel(0);
+
+    let spawning = {
+        let shared = Arc::clone(&shared);
+        let owner = Arc::clone(&owner);
+        thread::spawn(move || {
+            shared.spawn_with_registration_hook(&owner, std::future::pending::<()>(), || {
+                registered.send(()).unwrap();
+                wait_to_resume.recv().unwrap();
+            })
+        })
+    };
+
+    wait_for_registration.recv().unwrap();
+    {
+        let registry = shared.registry.lock().unwrap();
+        let registration = registry.tasks.values().next().unwrap();
+        assert!(registration.abort.is_none());
+        assert!(!owner.is_empty());
+    }
+
+    shared.close(None, true);
+
+    assert!(shared.closed.load(Ordering::Acquire));
+    assert!(
+        shared
+            .registry
+            .lock()
+            .unwrap()
+            .tasks
+            .values()
+            .next()
+            .unwrap()
+            .state
+            .cancelled
+            .load(Ordering::Acquire)
+    );
+
+    resume.send(()).unwrap();
+    let task = match spawning.join().unwrap() {
+        Ok(task) => task,
+        Err(error) => panic!("task registration failed: {error}"),
+    };
+
+    assert!(matches!(runtime.block_on(task), Err(TaskError::Cancelled)));
+    assert!(owner.is_empty());
+}
+
+#[test]
 fn socket_registration_preserves_configuration_and_conversion_errors() {
     let runtime = runtime();
     let (socket, _peer) = socket_pair();
@@ -357,6 +416,72 @@ fn write_retries_interrupted_and_would_block_operations() {
         assert_eq!(attempts, 3);
         assert_eq!(readiness_waits, 1);
     });
+}
+
+#[test]
+fn socket_write_waits_until_the_send_buffer_is_writable() {
+    let runtime = runtime();
+    let scheduler = Scheduler::new(runtime.handle().clone());
+    let handle = scheduler.handle();
+    let (client, mut server) = socket_pair();
+    server.set_nonblocking(true).unwrap();
+    let socket = handle.register_socket(client).unwrap();
+    let fill = vec![0; 64 * 1024];
+
+    runtime.block_on(async {
+        socket.inner.writable().await.unwrap();
+        let mut written = 0;
+        loop {
+            match socket.inner.try_write(&fill) {
+                Ok(0) => panic!("socket write made no progress"),
+                Ok(count) => written += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("failed to fill socket send buffer: {error}"),
+            }
+        }
+        assert!(written > 0);
+    });
+
+    let (start_reader, wait_for_start) = mpsc::sync_channel(0);
+    let (finish_reader, wait_for_finish) = mpsc::sync_channel(0);
+    let reader = thread::spawn(move || {
+        wait_for_start.recv().unwrap();
+        let mut buffer = [0; 64 * 1024];
+        let mut total = 0;
+        loop {
+            match wait_for_finish.try_recv() {
+                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+
+            match server.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => total += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(error) => panic!("failed to drain socket receive buffer: {error}"),
+            }
+        }
+        total
+    });
+
+    let mut write = Box::pin(handle.io_write(&socket, vec![42]));
+    runtime.block_on(async {
+        std::future::poll_fn(|context| {
+            assert!(write.as_mut().poll(context).is_pending());
+            start_reader.send(()).unwrap();
+            Poll::Ready(())
+        })
+        .await;
+
+        let (result, buffer) = write.await;
+        assert_eq!(result.unwrap(), 1);
+        assert_eq!(buffer, [42]);
+    });
+
+    finish_reader.send(()).unwrap();
+    assert!(reader.join().unwrap() > 0);
 }
 
 #[test]

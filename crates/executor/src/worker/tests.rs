@@ -2,8 +2,8 @@
 // Copyright, 2026, by Samuel Williams.
 
 use super::{
-    IdleSearch, SearchResult, WorkerState, classify_search, finish_idle_search, take_idle_runnable,
-    take_stolen,
+    IdleSearch, SearchResult, WorkerState, classify_search, finish_idle_search, search_result,
+    take_idle_runnable, take_stolen,
 };
 use crate::owner::Owner;
 use crate::task::{Runnable, TaskState, UNASSIGNED_WORKER};
@@ -43,6 +43,12 @@ fn records_retry_separately_from_empty_and_success() {
 
     assert_eq!(take_stolen(Steal::Success(()), &mut retry), Some(()));
     assert!(retry);
+}
+
+#[test]
+fn search_reports_retry_only_when_a_queue_raced() {
+    assert!(matches!(search_result(true), Steal::Retry));
+    assert!(matches!(search_result(false), Steal::Empty));
 }
 
 #[test]

@@ -69,6 +69,19 @@ impl Shared {
         FutureType: Future + Send + 'static,
         FutureType::Output: Send + 'static,
     {
+        self.spawn_with_registration_hook(owner, future, || {})
+    }
+
+    fn spawn_with_registration_hook<FutureType>(
+        self: &Arc<Self>,
+        owner: &Arc<Owner>,
+        future: FutureType,
+        after_registration: impl FnOnce(),
+    ) -> Result<TaskHandle<FutureType::Output>, SpawnError>
+    where
+        FutureType: Future + Send + 'static,
+        FutureType::Output: Send + 'static,
+    {
         let mut registry = self
             .registry
             .lock()
@@ -96,6 +109,7 @@ impl Shared {
         );
         owner.remaining.fetch_add(1, Ordering::Release);
         drop(registry);
+        after_registration();
         // Publish ownership before spawn, but do not hold the registry lock:
         // a shut-down runtime can destroy the submitted future immediately.
         let inner = self.runtime.spawn(TrackedFuture {

@@ -133,6 +133,10 @@ fn search(shared: &Shared, local: &LocalWorker, iteration: usize) -> Steal<Runna
             return Steal::Success(runnable);
         }
     }
+    search_result(retry)
+}
+
+fn search_result(retry: bool) -> Steal<Runnable> {
     if retry { Steal::Retry } else { Steal::Empty }
 }
 
