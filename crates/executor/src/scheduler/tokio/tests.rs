@@ -3,6 +3,7 @@
 
 use super::*;
 use std::future::ready;
+use std::io::Read;
 use std::sync::mpsc;
 use std::task::{Context, Poll, Waker};
 use std::thread;
@@ -414,6 +415,57 @@ fn write_retries_interrupted_and_would_block_operations() {
         assert_eq!(attempts, 3);
         assert_eq!(readiness_waits, 1);
     });
+}
+
+#[test]
+fn socket_write_waits_until_the_send_buffer_is_writable() {
+    let runtime = runtime();
+    let scheduler = Scheduler::new(runtime.handle().clone());
+    let handle = scheduler.handle();
+    let (client, mut server) = socket_pair();
+    let socket = handle.register_socket(client).unwrap();
+    let fill = vec![0; 64 * 1024];
+
+    runtime.block_on(async {
+        socket.inner.writable().await.unwrap();
+        let mut written = 0;
+        loop {
+            match socket.inner.try_write(&fill) {
+                Ok(0) => panic!("socket write made no progress"),
+                Ok(count) => written += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("failed to fill socket send buffer: {error}"),
+            }
+        }
+        assert!(written > 0);
+    });
+
+    let (start_reader, wait_for_start) = mpsc::sync_channel(0);
+    let (finish_reader, wait_for_finish) = mpsc::sync_channel(0);
+    let reader = thread::spawn(move || {
+        wait_for_start.recv().unwrap();
+        let mut buffer = [0; 64 * 1024];
+        let count = server.read(&mut buffer).unwrap();
+        wait_for_finish.recv().unwrap();
+        count
+    });
+
+    let mut write = Box::pin(handle.io_write(&socket, vec![42]));
+    runtime.block_on(async {
+        std::future::poll_fn(|context| {
+            assert!(write.as_mut().poll(context).is_pending());
+            start_reader.send(()).unwrap();
+            Poll::Ready(())
+        })
+        .await;
+
+        let (result, buffer) = write.await;
+        assert_eq!(result.unwrap(), 1);
+        assert_eq!(buffer, [42]);
+    });
+
+    finish_reader.send(()).unwrap();
+    assert!(reader.join().unwrap() > 0);
 }
 
 #[test]
