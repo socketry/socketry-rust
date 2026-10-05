@@ -3,7 +3,9 @@
 
 use super::*;
 use std::future::ready;
+use std::sync::mpsc;
 use std::task::{Context, Poll, Waker};
+use std::thread;
 
 fn runtime() -> ::tokio::runtime::Runtime {
     ::tokio::runtime::Builder::new_current_thread()
@@ -189,6 +191,61 @@ fn task_identifier_exhaustion_is_reported() {
         scheduler.spawn(async {}),
         Err(SpawnError::IdentifiersExhausted)
     ));
+}
+
+#[test]
+fn shutdown_cancels_a_task_registered_before_tokio_spawn() {
+    let runtime = runtime();
+    let scheduler = Scheduler::new(runtime.handle().clone());
+    let shared = Arc::clone(&scheduler.handle.shared);
+    let owner = Arc::new(Owner::new());
+    let (registered, wait_for_registration) = mpsc::sync_channel(0);
+    let (resume, wait_to_resume) = mpsc::sync_channel(0);
+
+    let spawning = {
+        let shared = Arc::clone(&shared);
+        let owner = Arc::clone(&owner);
+        thread::spawn(move || {
+            shared.spawn_with_registration_hook(&owner, std::future::pending::<()>(), || {
+                registered.send(()).unwrap();
+                wait_to_resume.recv().unwrap();
+            })
+        })
+    };
+
+    wait_for_registration.recv().unwrap();
+    {
+        let registry = shared.registry.lock().unwrap();
+        let registration = registry.tasks.values().next().unwrap();
+        assert!(registration.abort.is_none());
+        assert!(!owner.is_empty());
+    }
+
+    shared.close(None, true);
+
+    assert!(shared.closed.load(Ordering::Acquire));
+    assert!(
+        shared
+            .registry
+            .lock()
+            .unwrap()
+            .tasks
+            .values()
+            .next()
+            .unwrap()
+            .state
+            .cancelled
+            .load(Ordering::Acquire)
+    );
+
+    resume.send(()).unwrap();
+    let task = match spawning.join().unwrap() {
+        Ok(task) => task,
+        Err(error) => panic!("task registration failed: {error}"),
+    };
+
+    assert!(matches!(runtime.block_on(task), Err(TaskError::Cancelled)));
+    assert!(owner.is_empty());
 }
 
 #[test]

@@ -12,9 +12,14 @@ permissions:
 
 jobs:
   coverage:
-    name: Formatting, Clippy, and coverage
-    runs-on: ubuntu-latest
+    name: Coverage (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Native selectors and positioned file I/O are target-specific.
+        runner: [ubuntu-24.04, macos-15, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v2
@@ -26,9 +31,11 @@ jobs:
       - name: Install coverage tool
         run: cargo install cargo-llvm-cov --locked
       - run: cargo fmt --all -- --check
+        if: matrix.runner == 'ubuntu-24.04'
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Run tests and require complete line coverage
-        run: cargo bake --locked test:coverage --all-targets true
+        if: matrix.runner == 'ubuntu-24.04'
+      - name: Run tests and require complete source-region coverage
+        run: cargo bake --locked test:coverage --all-targets true --all-features true
 
   test:
     name: ${{ matrix.name }}
