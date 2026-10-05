@@ -8,7 +8,7 @@
 //! shutdown does not shut down that shared reactor. Futures contain no private
 //! coroutine stacks and may be polled on different workers.
 use crate::scheduler::file::{read_at, write_at};
-use crate::scheduler::{BufferResult, Clock, FileIo, Interest, Network};
+use crate::scheduler::{BufferResult, Clock, FileIO, Interest, Network};
 use async_io::Async;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -108,7 +108,7 @@ impl Network for Selector {
     }
 }
 
-impl FileIo for Selector {
+impl FileIO for Selector {
     async fn file_read_at(
         &self,
         file: Arc<File>,

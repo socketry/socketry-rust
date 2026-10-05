@@ -15,7 +15,7 @@
 //! channel per operation. It does not yet pool operation records or register
 //! buffers with the kernel.
 use super::readiness::{self, Listener, Socket};
-use crate::scheduler::{BufferResult, Clock, FileIo, Interest, Network};
+use crate::scheduler::{BufferResult, Clock, FileIO, Interest, Network};
 use event_listener::{Event as CompletionEvent, Listener as _};
 use futures_channel::oneshot;
 use io_uring::{IoUring, opcode, squeue, types};
@@ -34,6 +34,74 @@ use std::time::Duration;
 const CANCEL_TAG: u64 = 1 << 63;
 const COMMAND_EVENT: usize = 0;
 const RING_EVENT: usize = 1;
+
+// Keep syscall failures deterministic in unit tests while production calls the OS directly.
+fn syscall<T>(name: &'static str, operation: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
+    #[cfg(test)]
+    {
+        tests::syscall(name, operation)
+    }
+    #[cfg(not(test))]
+    {
+        let _ = name;
+        operation()
+    }
+}
+
+fn validate_completion_support(nodrop: bool) -> io::Result<()> {
+    if nodrop {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "io_uring requires reliable completion overflow handling",
+        ))
+    }
+}
+
+fn validate_operation_support(supported: impl Fn(u8) -> bool) -> io::Result<()> {
+    for operation in [
+        opcode::Read::CODE,
+        opcode::Write::CODE,
+        opcode::Recv::CODE,
+        opcode::Send::CODE,
+        opcode::AsyncCancel::CODE,
+    ] {
+        if !supported(operation) {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "required io_uring operation is unavailable",
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn retry_operation<O, F, W, G>(
+    mut buffer: Vec<u8>,
+    mut operation: O,
+    mut wait: W,
+) -> BufferResult
+where
+    O: FnMut(Vec<u8>) -> F,
+    F: std::future::Future<Output = BufferResult>,
+    W: FnMut() -> G,
+    G: std::future::Future<Output = io::Result<()>>,
+{
+    loop {
+        let (result, returned) = operation(buffer).await;
+        buffer = returned;
+        match result {
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if let Err(error) = wait().await {
+                    return (Err(error), buffer);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => return (result, buffer),
+        }
+    }
+}
 
 enum Resource {
     Socket(Socket),
@@ -81,9 +149,11 @@ impl Request {
     }
 
     fn finish(mut self, result: io::Result<usize>) {
-        if let Some(reply) = self.reply.take() {
-            let _ = reply.send((result, std::mem::take(&mut self.buffer)));
-        }
+        let reply = self
+            .reply
+            .take()
+            .expect("unfinished requests retain their completion sender");
+        let _ = reply.send((result, std::mem::take(&mut self.buffer)));
     }
 
     fn into_buffer(mut self) -> Vec<u8> {
@@ -160,7 +230,7 @@ impl Controller {
         // A full pipe already contains a wakeup. Other errors mean the selector
         // has exited; dropping its receivers wakes pending operation futures.
         loop {
-            match (&self.notification).write(&[1]) {
+            match syscall("notify", || (&self.notification).write(&[1])) {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 _ => break,
             }
@@ -206,32 +276,18 @@ pub struct Selector {
 
 impl Selector {
     pub fn new() -> io::Result<Self> {
-        let ring = IoUring::new(256)?;
-        if !ring.params().is_feature_nodrop() {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "io_uring requires reliable completion overflow handling",
-            ));
-        }
+        let ring = syscall("ring", || IoUring::new(256))?;
+        syscall("completion-support", || {
+            validate_completion_support(ring.params().is_feature_nodrop())
+        })?;
         let mut probe = io_uring::Probe::new();
-        ring.submitter().register_probe(&mut probe)?;
-        for operation in [
-            opcode::Read::CODE,
-            opcode::Write::CODE,
-            opcode::Recv::CODE,
-            opcode::Send::CODE,
-            opcode::AsyncCancel::CODE,
-        ] {
-            if !probe.is_supported(operation) {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "required io_uring operation is unavailable",
-                ));
-            }
-        }
-        let (notification, receiver) = UnixStream::pair()?;
-        notification.set_nonblocking(true)?;
-        receiver.set_nonblocking(true)?;
+        syscall("probe", || ring.submitter().register_probe(&mut probe))?;
+        syscall("operation-support", || {
+            validate_operation_support(|operation| probe.is_supported(operation))
+        })?;
+        let (notification, receiver) = syscall("notification-pair", UnixStream::pair)?;
+        syscall("notification-mode", || notification.set_nonblocking(true))?;
+        syscall("receiver-mode", || receiver.set_nonblocking(true))?;
         let (commands, incoming) = mpsc::channel();
         let shutdown = Arc::new(Shutdown {
             finished: AtomicBool::new(false),
@@ -239,15 +295,17 @@ impl Selector {
         });
         let reactor = Reactor::new(ring, receiver, incoming)?;
         let completion = SignalCompletion(Arc::clone(&shutdown));
-        thread::Builder::new()
-            .name("socketry-io-uring".into())
-            .spawn(move || {
-                let _completion = completion;
-                // An unexpected system error closes completion channels. InFlight's
-                // destructor retains any memory still accessible to the kernel.
-                let mut reactor = reactor;
-                let _ = reactor.run();
-            })?;
+        syscall("spawn", || {
+            thread::Builder::new()
+                .name("socketry-io-uring".into())
+                .spawn(move || {
+                    let _completion = completion;
+                    // An unexpected system error closes completion channels. InFlight's
+                    // destructor retains any memory still accessible to the kernel.
+                    let mut reactor = reactor;
+                    let _ = reactor.run();
+                })
+        })?;
         Ok(Self {
             controller: Arc::new(Controller {
                 commands,
@@ -302,6 +360,12 @@ impl Selector {
     }
 
     async fn operation(&self, resource: Resource, buffer: Vec<u8>, write: bool) -> BufferResult {
+        // Some kernels retry EAGAIN internally. Tests can deterministically
+        // exercise the public retry contract before submitting real I/O.
+        #[cfg(test)]
+        if let Err(error) = tests::syscall("operation", || Ok(())) {
+            return (Err(error), buffer);
+        }
         if let Err(error) = self.check_open() {
             return (Err(error), buffer);
         }
@@ -386,45 +450,21 @@ impl Network for Selector {
         self.check_open()?;
         readiness::Selector.accept(listener).await
     }
-    async fn io_read(&self, socket: &Socket, mut buffer: Vec<u8>) -> BufferResult {
-        loop {
-            let (result, returned) = self
-                .operation(Resource::Socket(socket.clone()), buffer, false)
-                .await;
-            buffer = returned;
-            match result {
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if let Err(error) = readiness::Selector
-                        .io_wait(socket, Interest::Readable)
-                        .await
-                    {
-                        return (Err(error), buffer);
-                    }
-                }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                result => return (result, buffer),
-            }
-        }
+    async fn io_read(&self, socket: &Socket, buffer: Vec<u8>) -> BufferResult {
+        retry_operation(
+            buffer,
+            |buffer| self.operation(Resource::Socket(socket.clone()), buffer, false),
+            || readiness::Selector.io_wait(socket, Interest::Readable),
+        )
+        .await
     }
-    async fn io_write(&self, socket: &Socket, mut buffer: Vec<u8>) -> BufferResult {
-        loop {
-            let (result, returned) = self
-                .operation(Resource::Socket(socket.clone()), buffer, true)
-                .await;
-            buffer = returned;
-            match result {
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if let Err(error) = readiness::Selector
-                        .io_wait(socket, Interest::Writable)
-                        .await
-                    {
-                        return (Err(error), buffer);
-                    }
-                }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                result => return (result, buffer),
-            }
-        }
+    async fn io_write(&self, socket: &Socket, buffer: Vec<u8>) -> BufferResult {
+        retry_operation(
+            buffer,
+            |buffer| self.operation(Resource::Socket(socket.clone()), buffer, true),
+            || readiness::Selector.io_wait(socket, Interest::Writable),
+        )
+        .await
     }
     async fn io_wait(&self, socket: &Socket, interest: Interest) -> io::Result<()> {
         self.check_open()?;
@@ -432,7 +472,7 @@ impl Network for Selector {
     }
 }
 
-impl FileIo for Selector {
+impl FileIO for Selector {
     async fn file_read_at(&self, file: Arc<File>, buffer: Vec<u8>, offset: u64) -> BufferResult {
         self.operation(Resource::File(file, offset), buffer, false)
             .await
@@ -467,7 +507,7 @@ impl Reactor {
         incoming: mpsc::Receiver<Command>,
     ) -> io::Result<Self> {
         let reactor = Self {
-            poller: Poller::new()?,
+            poller: syscall("poller", Poller::new)?,
             ring,
             notification,
             incoming,
@@ -479,12 +519,16 @@ impl Reactor {
         // SAFETY: Reactor owns both sources and deletes their registrations in
         // Drop, before the poller and sources are destroyed.
         unsafe {
-            reactor
-                .poller
-                .add(&reactor.notification, Event::readable(COMMAND_EVENT))?;
-            reactor
-                .poller
-                .add(&reactor.ring, Event::readable(RING_EVENT))?;
+            syscall("add-notification", || {
+                reactor
+                    .poller
+                    .add(&reactor.notification, Event::readable(COMMAND_EVENT))
+            })?;
+            syscall("add-ring", || {
+                reactor
+                    .poller
+                    .add(&reactor.ring, Event::readable(RING_EVENT))
+            })?;
         }
         Ok(reactor)
     }
@@ -495,9 +539,11 @@ impl Reactor {
             .iter()
             .position(|request| request.identifier == identifier)
         {
-            if let Some(request) = self.pending.remove(position) {
-                request.finish(Err(io::ErrorKind::Interrupted.into()));
-            }
+            let request = self
+                .pending
+                .remove(position)
+                .expect("pending queue is unchanged since finding this position");
+            request.finish(Err(io::ErrorKind::Interrupted.into()));
         } else if let Some(request) = self.in_flight.0.get_mut(&identifier)
             && !request.cancelling
         {
@@ -544,14 +590,19 @@ impl Reactor {
                 if identifier & CANCEL_TAG != 0 {
                     continue;
                 }
-                if let Some(request) = self.in_flight.0.remove(&identifier) {
-                    let result = completion.result();
-                    request.finish(if result < 0 {
-                        Err(io::Error::from_raw_os_error(-result))
-                    } else {
-                        Ok(result as usize)
-                    });
-                }
+                // Every untagged CQE is the single original completion of a
+                // published request. Only this path removes it from InFlight.
+                let request = self
+                    .in_flight
+                    .0
+                    .remove(&identifier)
+                    .expect("original completion retains its in-flight request");
+                let result = completion.result();
+                request.finish(if result < 0 {
+                    Err(io::Error::from_raw_os_error(-result))
+                } else {
+                    Ok(result as usize)
+                });
             }
 
             {
@@ -578,19 +629,13 @@ impl Reactor {
                     // before publication. Neither is released or accessed until
                     // the original CQE, even when cancellation completes first.
                     // A failed push does not publish the entry.
-                    if unsafe { submissions.push(&entry) }.is_err() {
-                        let request = self
-                            .in_flight
-                            .0
-                            .remove(&identifier)
-                            .expect("inserted operation");
-                        self.pending.push_front(request);
-                        break;
-                    }
+                    unsafe { submissions.push(&entry) }.expect(
+                        "submission capacity was checked and the local queue has not changed",
+                    );
                 }
             }
 
-            match self.ring.submit() {
+            match syscall("submit", || self.ring.submit()) {
                 Err(error)
                     if error.kind() == io::ErrorKind::Interrupted
                         || matches!(error.raw_os_error(), Some(libc::EBUSY | libc::EAGAIN)) =>
@@ -612,7 +657,7 @@ impl Reactor {
             let mut notified = false;
             let mut bytes = [0; 256];
             loop {
-                match self.notification.read(&mut bytes) {
+                match syscall("notification-read", || self.notification.read(&mut bytes)) {
                     Ok(0) => break,
                     Ok(_) => notified = true,
                     Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
@@ -620,23 +665,28 @@ impl Reactor {
                     Err(error) => return Err(error),
                 }
             }
-            self.poller
-                .modify(&self.notification, Event::readable(COMMAND_EVENT))?;
-            self.poller
-                .modify(&self.ring, Event::readable(RING_EVENT))?;
+            syscall("modify-notification", || {
+                self.poller
+                    .modify(&self.notification, Event::readable(COMMAND_EVENT))
+            })?;
+            syscall("modify-ring", || {
+                self.poller.modify(&self.ring, Event::readable(RING_EVENT))
+            })?;
             events.clear();
-            let result = self.poller.wait(
-                &mut events,
-                if notified
-                    || command_batch_full
-                    || !self.pending.is_empty()
-                    || !self.ring.submission().is_empty()
-                {
-                    Some(Duration::ZERO)
-                } else {
-                    None
-                },
-            );
+            let result = syscall("wait", || {
+                self.poller.wait(
+                    &mut events,
+                    if notified
+                        || command_batch_full
+                        || !self.pending.is_empty()
+                        || !self.ring.submission().is_empty()
+                    {
+                        Some(Duration::ZERO)
+                    } else {
+                        None
+                    },
+                )
+            });
             if let Err(error) = result
                 && error.kind() != io::ErrorKind::Interrupted
             {

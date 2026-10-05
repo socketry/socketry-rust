@@ -79,15 +79,15 @@ dependencies = [
 
 [[package]]
 name = "bake-agent-context"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "386910c08614146515e754bf6208aedba73abdb9a2767e8bd5c2d997845c84ef"
+checksum = "9d0559ad6c6b640ec182f6378ca77825c4327f7b4fce65cfa84e47e25a1bfcb5"
 dependencies = [
  "bake",
  "serde",
  "serde_json",
  "serde_yaml_ng",
- "socketry-markdown 0.1.1",
+ "socketry-markdown 0.2.0",
 ]
 
 [[package]]
@@ -141,9 +141,9 @@ dependencies = [
 
 [[package]]
 name = "bake-readme"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cbf2eb3710006c27705edd4186c53bc85bcca4fa80ea927a3718660e59833f2"
+checksum = "48b3733cc48991e6482c04b4997db89f75a7200e2c546c73047bd24e323c3f2a"
 dependencies = [
  "bake",
  "serde_json",
@@ -164,9 +164,9 @@ dependencies = [
 
 [[package]]
 name = "bake-test-rust"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9d5ceec9cc08a3bb421dd3755ad9e073831934793aa88d8f55095ad98c1dc45"
+checksum = "3ced0bd0b0ae3f8df4b3cbb03b2a98080a5a9504c6b758c3eb96929dfd3dae93"
 dependencies = [
  "bake",
  "serde_json",
@@ -287,7 +287,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -796,7 +796,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -953,14 +953,14 @@ dependencies = [
 
 [[package]]
 name = "socketry"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "socketry-executor",
 ]
 
 [[package]]
 name = "socketry-executor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-io",
  "async-task",
@@ -973,6 +973,7 @@ dependencies = [
  "loom",
  "pin-project-lite",
  "polling",
+ "tempfile",
  "tokio",
 ]
 
@@ -981,6 +982,16 @@ name = "socketry-markdown"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5713ab1be01960a2cdbb85d6b696063b406300bc5a876a013e23d6e5bf94b19"
+dependencies = [
+ "regex",
+ "unicode-id",
+]
+
+[[package]]
+name = "socketry-markdown"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37d3a646262edeca60e86e4c4dd493167e74beb03ea75a60b2d5c40e6d6d8c5b"
 dependencies = [
  "regex",
  "unicode-id",
@@ -1075,7 +1086,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

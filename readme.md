@@ -41,7 +41,7 @@ cargo run --package socketry-executor --example work_stealing
 
 ## Portable I/O and runtime selection
 
-Generic code can accept `Network`, `FileIo`, `Clock`, and `Spawn` capabilities. Socketry and the optional Tokio adapter implement these contracts with concrete future and resource types. Import the traits to call their methods.
+Generic code can accept `Network`, `FileIO`, `Clock`, and `Spawn` capabilities. Socketry and the optional Tokio adapter implement these contracts with concrete future and resource types. Import the traits to call their methods.
 
 | Cargo configuration | Implementation |
 | --- | --- |
@@ -79,8 +79,12 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 ## Releases
 
 <!-- bake-readme:releases:start -->
-
 See [releases.md](releases.md) for the full release history.
+
+### v0.1.5
+
+- Cover io_uring initialization failures, readiness retries, cancellation, and shutdown while making request ownership invariants explicit.
+- Expose the conventional `FileIO` name with `FileIo` compatibility aliases, extract portable scheduler contracts, and require coverage for every supported platform and feature implementation.
 
 ### v0.1.4
 
@@ -90,12 +94,11 @@ See [releases.md](releases.md) for the full release history.
 ### v0.1.3
 
 - Use the shared Socketry Project tasks and update agent context setup guidance.
-
-### v0.1.2
-
-- Use the shared `socketry-project` Releasing skill for the standard release process and remove references to the duplicate Bake Cargo publishing context.
-
 <!-- bake-readme:releases:end -->
+
+## See Also
+
+- [`socketry-executor`](https://github.com/socketry/socketry-rust/tree/main/crates/executor).
 
 ## Contributing
 
