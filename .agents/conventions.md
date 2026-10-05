@@ -7,4 +7,4 @@
 - Keep native I/O backends under `scheduler/selector/` and runtime adapters alongside their runtime implementation.
 - Pass task owners explicitly when libraries spawn child tasks. Preserve barrier ownership, cancellation, and shutdown behavior.
 - Keep public implementation guidance in `context/implementation.md` and architecture decisions in `context/design.md`.
-- Keep repository-only conventions under `.agents/`; use the Bake Cargo agent context for the shared publishing process.
+- Keep repository-only conventions under `.agents/`; use the Socketry Project releasing skill for the shared publishing process.

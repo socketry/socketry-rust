@@ -2,10 +2,7 @@
 
 Foundational concurrency APIs for Rust projects in the Socketry ecosystem.
 
-The `socketry` package re-exports `socketry-executor`: owned asynchronous
-tasks, explicit child barriers, and a futures executor with multiple workers
-and work stealing. Tasks use ordinary future polling and have no private
-coroutine stacks.
+The `socketry` package re-exports `socketry-executor`: owned asynchronous tasks, explicit child barriers, and a futures executor with multiple workers and work stealing. Tasks use ordinary future polling and have no private coroutine stacks.
 
 ## Usage
 
@@ -30,22 +27,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Workers start when the scheduler is constructed. `spawn` accepts
-`Send + 'static` futures and returns an awaitable result handle. Dropping that
-handle leaves the task owned by its scheduler or barrier. Dropping the
-scheduler requests cancellation and joins workers when called outside a worker.
+Workers start when the scheduler is constructed. `spawn` accepts `Send + 'static` futures and returns an awaitable result handle. Dropping that handle leaves the task owned by its scheduler or barrier. Dropping the scheduler requests cancellation and joins workers when called outside a worker.
 
-Use `scheduler.barrier()` to own children explicitly. Both schedulers and
-barriers implement `Spawn`. `barrier.wait().await` waits for completion;
-`barrier.stop().await` closes the barrier, cancels children, and waits for their
-synchronous destructors. Dropping a barrier requests cancellation without
-waiting. Observe individual results and panics through task handles.
+Use `scheduler.barrier()` to own children explicitly. Both schedulers and barriers implement `Spawn`. `barrier.wait().await` waits for completion; `barrier.stop().await` closes the barrier, cancels children, and waits for their synchronous destructors. Dropping a barrier requests cancellation without waiting. Observe individual results and panics through task handles.
 
-`Scheduler::current()` and `Task::current()` provide contextual lookup while
-tasks run. Use `.await` to suspend; synchronous blocking calls occupy a worker.
+`Scheduler::current()` and `Task::current()` provide contextual lookup while tasks run. Use `.await` to suspend; synchronous blocking calls occupy a worker.
 
-See the [executor package](crates/executor/readme.md) for scheduling,
-ownership, cancellation and allocation details. An executable example is:
+See the [executor package](crates/executor/readme.md) for scheduling, ownership, cancellation and allocation details. An executable example is:
 
 ```sh
 cargo run --package socketry-executor --example work_stealing
@@ -53,9 +41,7 @@ cargo run --package socketry-executor --example work_stealing
 
 ## Portable I/O and runtime selection
 
-Generic code can accept `Network`, `FileIo`, `Clock`, and `Spawn` capabilities.
-Socketry and the optional Tokio adapter implement these contracts with concrete
-future and resource types. Import the traits to call their methods.
+Generic code can accept `Network`, `FileIo`, `Clock`, and `Spawn` capabilities. Socketry and the optional Tokio adapter implement these contracts with concrete future and resource types. Import the traits to call their methods.
 
 | Cargo configuration | Implementation |
 | --- | --- |
@@ -65,11 +51,7 @@ future and resource types. Import the traits to call their methods.
 | `default-features = false, features = ["tokio"]` | Tokio adapter without Socketry's native I/O dependencies. |
 | `default-features = false` | Task executor and portable contracts, without I/O implementations. |
 
-Socket registrations persist across operations and worker migration. Reads and
-writes take a reusable owned `Vec<u8>` and return `(io::Result<usize>, Vec<u8>)`.
-Reads fill the buffer's existing length; allocate it with `vec![0; capacity]`.
-Operations may transfer fewer bytes than requested. Dropping a future can
-abandon an operation that has already consumed or transmitted bytes.
+Socket registrations persist across operations and worker migration. Reads and writes take a reusable owned `Vec<u8>` and return `(io::Result<usize>, Vec<u8>)`. Reads fill the buffer's existing length; allocate it with `vec![0; capacity]`. Operations may transfer fewer bytes than requested. Dropping a future can abandon an operation that has already consumed or transmitted bytes.
 
 Run the same TCP exchange with either runtime:
 
@@ -80,45 +62,30 @@ cargo run -p socketry-executor --example portable_io --no-default-features --fea
 cargo run -p socketry-executor --example portable_io --features io-uring
 ```
 
-The Tokio adapter needs a live runtime with I/O and time enabled. It preserves
-explicit task/barrier ownership, and its asynchronous `shutdown().await` joins
-task destruction. Passing its handle explicitly selects Tokio; Socketry's
-`Scheduler::current()` continues to identify Socketry execution.
+The Tokio adapter needs a live runtime with I/O and time enabled. It preserves explicit task/barrier ownership, and its asynchronous `shutdown().await` joins task destruction. Passing its handle explicitly selects Tokio; Socketry's `Scheduler::current()` continues to identify Socketry execution.
 
 ## Current scope
 
-TCP connect/accept/read/write/readiness, positioned file reads/writes, and sleep
-are implemented. Regular files use blocking pools except for Linux io_uring.
-Windows socket readiness uses IOCP/AFD; native overlapped file operations are
-not implemented. Socketry currently uses async-io's shared readiness reactor
-and timers; the io-event timer port remains planned in the
-[design guide](context/design.md).
+TCP connect/accept/read/write/readiness, positioned file reads/writes, and sleep are implemented. Regular files use blocking pools except for Linux io\_uring. Windows socket readiness uses IOCP/AFD; native overlapped file operations are not implemented. Socketry currently uses async-io's shared readiness reactor and timers; the io-event timer port remains planned in the [design guide](context/design.md).
 
-The io_uring selector owns a dedicated thread, retains buffers until terminal
-completions, and drains cancellation during shutdown. Connection setup and
-readiness waits still use async-io. Kernel support is probed when the selector
-is first needed; failures are returned without silently falling back. Operation
-pooling, registered buffers, UDP, arbitrary descriptor APIs, and a local
-`!Send` task executor remain future work.
+The io\_uring selector owns a dedicated thread, retains buffers until terminal completions, and drains cancellation during shutdown. Connection setup and readiness waits still use async-io. Kernel support is probed when the selector is first needed; failures are returned without silently falling back. Operation pooling, registered buffers, UDP, arbitrary descriptor APIs, and a local `!Send` task executor remain future work.
 
-The former coroutine implementation is preserved on branch `coroutine`, at
-commit `b520f3d`. Its native sources, stack allocation, nested synchronous
-`wait` and task transfer are absent from the future executor.
+The former coroutine implementation is preserved on branch `coroutine`, at commit `b520f3d`. Its native sources, stack allocation, nested synchronous `wait` and task transfer are absent from the future executor.
 
 ## Releasing
 
-Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`,
-or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a
-pull request. After review and merge, GitHub Actions publishes the release
-when the configured `crates-io` environment approves it, then creates or updates
-the matching GitHub Release from `releases.md`. See the shared
-[Releasing skill](https://github.com/socketry/socketry-project-rust/blob/main/context/releasing.md)
-for the standard release process.
+Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a pull request. After review and merge, GitHub Actions publishes the release when the configured `crates-io` environment approves it, then creates or updates the matching GitHub Release from `releases.md`. See the shared [Releasing skill](https://github.com/socketry/socketry-project-rust/blob/main/context/releasing.md) for the standard release process.
 
 ## Releases
 
 <!-- bake-readme:releases:start -->
+
 See [releases.md](releases.md) for the full release history.
+
+### v0.1.4
+
+- Adopt `socketry-project` 0.3.7 for shared project tasks and Markdown normalization.
+- Require the aggregate test and coverage result for pull request merges.
 
 ### v0.1.3
 
@@ -126,14 +93,8 @@ See [releases.md](releases.md) for the full release history.
 
 ### v0.1.2
 
-- Use the shared `socketry-project` Releasing skill for the standard release
-  process and remove references to the duplicate Bake Cargo publishing context.
+- Use the shared `socketry-project` Releasing skill for the standard release process and remove references to the duplicate Bake Cargo publishing context.
 
-### v0.1.1
-
-- Create or update GitHub Releases after successful crates.io publication.
-- Move implementation and design guidance into the package's public context.
-- Add Bake Agent Context tasks to the repository's development workspace.
 <!-- bake-readme:releases:end -->
 
 ## Contributing
@@ -142,12 +103,8 @@ Please open an issue or pull request on [GitHub](https://github.com/socketry/soc
 
 ### Agent Context
 
-Run `cargo bake agent:context:install` to install shared context and skills.
-Read `.agents/context/index.md` to find relevant guides, follow `agents.md` if
-present, and apply skills under `.agents/skills/`. See the [Agent Context guide]
-for guidance on organizing package context and repository-only instructions.
+Run `cargo bake agent:context:install` to install shared context and skills. Read `.agents/context/index.md` to find relevant guides, follow `agents.md` if present, and apply skills under `.agents/skills/`. The installer preserves repository-owned `agents.md`; it does not create or regenerate that file.
 
 [Agent Context guide]: https://github.com/socketry/bake-agent-context-rust/blob/main/context/agent-context.md
 
-The crate publishes [implementation](context/implementation.md) and
-[design](context/design.md) guides for its architecture and development.
+The crate publishes [implementation](context/implementation.md) and [design](context/design.md) guides for its architecture and development.
