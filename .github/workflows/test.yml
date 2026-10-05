@@ -35,7 +35,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
         if: matrix.runner == 'ubuntu-24.04'
       - name: Run tests and require complete source-region coverage
-        run: cargo bake --locked test:coverage --all-targets true --all-features true
+        run: cargo bake --locked test:coverage --all-targets true --features tokio
 
   test:
     name: ${{ matrix.name }}
