@@ -124,3 +124,16 @@ jobs:
         env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
           TSAN_OPTIONS: suppressions=${{ github.workspace }}/.github/tsan-suppressions.txt
+
+  test-result:
+    # Sanitizers are diagnostic; regular tests and coverage gate merging.
+    if: always()
+    needs: [coverage, test, io-uring, freebsd]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful tests and coverage
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$JOB_RESULTS" | jq -e 'all(.[]; .result == "success")'
