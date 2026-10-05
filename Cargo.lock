@@ -953,14 +953,14 @@ dependencies = [
 
 [[package]]
 name = "socketry"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "socketry-executor",
 ]
 
 [[package]]
 name = "socketry-executor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-io",
  "async-task",

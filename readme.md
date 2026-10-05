@@ -82,6 +82,10 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 
 See [releases.md](releases.md) for the full release history.
 
+### v0.1.5
+
+- Expose the conventional `FileIO` name with `FileIo` compatibility aliases, extract portable scheduler contracts, and require coverage for every supported platform and feature implementation.
+
 ### v0.1.4
 
 - Adopt `socketry-project` 0.3.7 for shared project tasks and Markdown normalization.
@@ -90,10 +94,6 @@ See [releases.md](releases.md) for the full release history.
 ### v0.1.3
 
 - Use the shared Socketry Project tasks and update agent context setup guidance.
-
-### v0.1.2
-
-- Use the shared `socketry-project` Releasing skill for the standard release process and remove references to the duplicate Bake Cargo publishing context.
 
 <!-- bake-readme:releases:end -->
 

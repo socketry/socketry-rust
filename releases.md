@@ -1,6 +1,6 @@
 # Releases
 
-## Unreleased
+## v0.1.5
 
 - Expose the conventional `FileIO` name with `FileIo` compatibility aliases, extract portable scheduler contracts, and require coverage for every supported platform and feature implementation.
 

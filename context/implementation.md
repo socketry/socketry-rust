@@ -54,4 +54,4 @@ Public behavior is covered in crates/executor/tests. Deterministic channels forc
 
 ThreadSanitizer loads `.github/tsan-suppressions.txt` to suppress Crossbeam's internal queue `Buffer::read` and `Buffer::write` race reports. Crossbeam reads slots speculatively and discards values when atomic validation fails. Its non-atomic volatile accesses remain a known Rust memory-model limitation; the suppression accepts that limitation rather than fixing it. See the [upstream discussion](https://github.com/crossbeam-rs/crossbeam/issues/589#issuecomment-720972996). Keep suppression patterns scoped to those buffer accesses and reassess them when updating Crossbeam. Other race reports continue to fail the sanitizer job.
 
-Coverage measures source regions for native and Tokio schedulers on each supported OS and architecture, plus Linux io_uring and FreeBSD. Executor-only and Tokio-only feature selections receive separate compilation checks.
+Coverage measures source regions for native and Tokio schedulers on each supported OS and architecture, plus Linux io\_uring and FreeBSD. Executor-only and Tokio-only feature selections receive separate compilation checks.
