@@ -1,0 +1,8 @@
+# Crossbeam speculatively reads queue slots before atomically validating the
+# steal. Reads invalidated by concurrent writes are discarded without using or
+# dropping the task. The non-atomic volatile accesses still violate Rust's
+# memory model; this suppression accepts that known dependency limitation.
+# https://github.com/crossbeam-rs/crossbeam/issues/589#issuecomment-720972996
+# Match only the queue buffer accesses, rather than all Crossbeam operations.
+race:crossbeam_deque::deque::Buffer*::read
+race:crossbeam_deque::deque::Buffer*::write

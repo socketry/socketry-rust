@@ -123,3 +123,4 @@ jobs:
         run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace --all-targets --locked -- --skip queue_publication_cannot_leave_a_worker_asleep
         env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          TSAN_OPTIONS: suppressions=${{ github.workspace }}/.github/tsan-suppressions.txt
