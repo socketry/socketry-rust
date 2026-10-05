@@ -121,7 +121,7 @@ when all workers are busy. No throughput or allocation benchmark is claimed yet.
 
 ## I/O and selectors
 
-The public `scheduler` module contains portable `Network`, `FileIo`, and `Clock`
+The public `scheduler` module contains portable `Network`, `FileIO`, and `Clock`
 traits, the Socketry implementation in `socketry.rs`, the optional Tokio adapter
 in `tokio.rs`, and native implementations under `selector/`.
 
@@ -150,7 +150,7 @@ length is unchanged; only the first returned byte count contains new data.
 Reads and writes can be partial. Each read/write call is one operation, not a
 read-exact/write-all convenience method.
 
-`FileIo::file_read_at` and `file_write_at` accept an `Arc<std::fs::File>` and an
+`FileIO::file_read_at` and `file_write_at` accept an `Arc<std::fs::File>` and an
 explicit offset. The readiness and Tokio implementations use blocking pools.
 Use ordinary files opened without append mode, and offsets fitting i64. Unix
 positioned operations leave the shared cursor unchanged; the Windows blocking

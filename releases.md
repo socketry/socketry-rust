@@ -1,5 +1,9 @@
 # Releases
 
+## Unreleased
+
+- Expose the conventional `FileIO` name with `FileIo` compatibility aliases, extract portable scheduler contracts, and require coverage for every supported platform and feature implementation.
+
 ## v0.1.4
 
 - Adopt `socketry-project` 0.3.7 for shared project tasks and Markdown normalization.

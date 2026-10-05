@@ -28,7 +28,7 @@ This guide describes the current implementation and its boundaries. Read [the de
 
 ## I/O and runtime boundaries
 
-- `scheduler/mod.rs` defines Network, FileIo and Clock. Operations return concrete Send futures; portable consumers receive the required capabilities.
+- `scheduler.rs` re-exports Network, FileIO, Interest and Clock from `scheduler/network.rs`, `file_io.rs`, `interest.rs` and `clock.rs`. Operations return concrete Send futures; portable consumers receive the required capabilities.
 - `scheduler/socketry.rs` owns the executor; `socketry/operations.rs` forwards capabilities to its lazily initialized, compile-time selected selector.
 - `scheduler/selector/` contains readiness, epoll, kqueue, iocp and io\_uring. Platform readiness modules share async-io's persistent registrations and process-wide reactor. Registered sockets remain usable as tasks migrate.
 - Default feature `native` provides TCP, positioned files and sleep. Feature `io-uring` selects Linux completion reads/writes; other supported platforms retain readiness. Feature `tokio` enables the separate runtime adapter. No default features builds the executor and contracts without native I/O.
@@ -53,3 +53,5 @@ This guide describes the current implementation and its boundaries. Read [the de
 Public behavior is covered in crates/executor/tests. Deterministic channels force stealing, migration, concurrent wakeups and cancellation during polling. The parking test uses Loom to model the queue-publication/idle-registration handshake. Keep its atomics and fence order aligned with the implementation; this models the handshake, not Crossbeam or async-task internals. When verification is requested, run workspace tests and doctests with `tokio` enabled; on Linux also run all features to exercise io\_uring. Check executor-only and Tokio-only feature combinations. The same TCP/file consumers exercise both implementations; Linux tests cover cancellation batches and shutdown races. CI covers Linux, macOS, Windows and FreeBSD, with separate Linux io\_uring and sanitizer jobs; distinguish configured CI from executed results.
 
 ThreadSanitizer loads `.github/tsan-suppressions.txt` to suppress Crossbeam's internal queue `Buffer::read` and `Buffer::write` race reports. Crossbeam reads slots speculatively and discards values when atomic validation fails. Its non-atomic volatile accesses remain a known Rust memory-model limitation; the suppression accepts that limitation rather than fixing it. See the [upstream discussion](https://github.com/crossbeam-rs/crossbeam/issues/589#issuecomment-720972996). Keep suppression patterns scoped to those buffer accesses and reassess them when updating Crossbeam. Other race reports continue to fail the sanitizer job.
+
+Coverage measures source regions for native and Tokio schedulers on each supported OS and architecture, plus Linux io_uring and FreeBSD. Executor-only and Tokio-only feature selections receive separate compilation checks.
