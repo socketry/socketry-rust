@@ -34,4 +34,5 @@ io-uring = ["native", "dep:io-uring", "dep:futures-channel", "dep:libc", "dep:po
 tokio = ["dep:tokio"]
 
 [dev-dependencies]
+tempfile = "3"
 loom = "0.7.2"
