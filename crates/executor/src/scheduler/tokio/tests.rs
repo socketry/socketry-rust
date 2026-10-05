@@ -7,6 +7,7 @@ use std::io::Read;
 use std::sync::mpsc;
 use std::task::{Context, Poll, Waker};
 use std::thread;
+use std::time::Duration;
 
 fn runtime() -> ::tokio::runtime::Runtime {
     ::tokio::runtime::Builder::new_current_thread()
@@ -423,6 +424,7 @@ fn socket_write_waits_until_the_send_buffer_is_writable() {
     let scheduler = Scheduler::new(runtime.handle().clone());
     let handle = scheduler.handle();
     let (client, mut server) = socket_pair();
+    server.set_nonblocking(true).unwrap();
     let socket = handle.register_socket(client).unwrap();
     let fill = vec![0; 64 * 1024];
 
@@ -445,9 +447,23 @@ fn socket_write_waits_until_the_send_buffer_is_writable() {
     let reader = thread::spawn(move || {
         wait_for_start.recv().unwrap();
         let mut buffer = [0; 64 * 1024];
-        let count = server.read(&mut buffer).unwrap();
-        wait_for_finish.recv().unwrap();
-        count
+        let mut total = 0;
+        loop {
+            match wait_for_finish.try_recv() {
+                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+
+            match server.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => total += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(error) => panic!("failed to drain socket receive buffer: {error}"),
+            }
+        }
+        total
     });
 
     let mut write = Box::pin(handle.io_write(&socket, vec![42]));
