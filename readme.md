@@ -79,12 +79,11 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 ## Releases
 
 <!-- bake-readme:releases:start -->
-
 See [releases.md](releases.md) for the full release history.
 
 ### v0.2.0
 
-- Rename the positioned file I/O trait from `FileIO` to `FileIo` in `socketry` and `socketry-executor`, including the public `scheduler` module. Update imports and trait bounds; the old spelling is removed without a compatibility alias.
+- Rename the positioned file I/O trait from `FileIO` to `FileIo` in `socketry` and `socketry-executor`, including the public `scheduler` module. Update imports and trait bounds.
 
 ### v0.1.5
 
@@ -95,7 +94,6 @@ See [releases.md](releases.md) for the full release history.
 
 - Adopt `socketry-project` 0.3.7 for shared project tasks and Markdown normalization.
 - Require the aggregate test and coverage result for pull request merges.
-
 <!-- bake-readme:releases:end -->
 
 ## See Also

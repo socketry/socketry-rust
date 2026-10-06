@@ -2,7 +2,7 @@
 
 ## v0.2.0
 
-- Rename the positioned file I/O trait from `FileIO` to `FileIo` in `socketry` and `socketry-executor`, including the public `scheduler` module. Update imports and trait bounds; the old spelling is removed without a compatibility alias.
+- Rename the positioned file I/O trait from `FileIO` to `FileIo` in `socketry` and `socketry-executor`, including the public `scheduler` module. Update imports and trait bounds.
 
 ## v0.1.5
 
