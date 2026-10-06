@@ -6,9 +6,8 @@ The `socketry` package re-exports `socketry-executor`: owned asynchronous tasks,
 
 ## Usage
 
-```toml
-[dependencies]
-socketry = "0.2"
+```sh
+cargo add socketry
 ```
 
 ```rust
@@ -79,6 +78,7 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 ## Releases
 
 <!-- bake-readme:releases:start -->
+
 See [releases.md](releases.md) for the full release history.
 
 ### v0.2.0
@@ -94,6 +94,7 @@ See [releases.md](releases.md) for the full release history.
 
 - Adopt `socketry-project` 0.3.7 for shared project tasks and Markdown normalization.
 - Require the aggregate test and coverage result for pull request merges.
+
 <!-- bake-readme:releases:end -->
 
 ## See Also
