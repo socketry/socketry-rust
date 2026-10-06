@@ -30,9 +30,7 @@ mod network;
 pub use network::Network;
 
 mod file_io;
-pub use file_io::FileIO;
-/// Compatibility spelling for [`FileIO`].
-pub use file_io::FileIO as FileIo;
+pub use file_io::FileIo;
 
 mod clock;
 pub use clock::Clock;

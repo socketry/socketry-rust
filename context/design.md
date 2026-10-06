@@ -82,7 +82,7 @@ Tokio and futures-io expose different AsyncRead and AsyncWrite traits. `tokio-ut
 
 Entering a Tokio runtime context provides access to its services; entering alone does not drive the runtime. Some mixed execution is possible when the required services are running, but must be established for the concrete APIs being used. Do not advertise universal Tokio compatibility from a Waker or stream adapter alone.
 
-The optional `scheduler::tokio` adapter implements Network, FileIO, Clock and Spawn against an existing runtime. It preserves direct-child barrier ownership and joins owned task destruction on asynchronous shutdown. The same generic TCP program runs on Socketry and Tokio. The adapter scopes runtime context to individual polls when registering resources; its futures can also be polled by Socketry workers while Tokio drives the underlying services. Socketry contextual lookups still identify Socketry execution; portable code passes handles explicitly.
+The optional `scheduler::tokio` adapter implements Network, FileIo, Clock and Spawn against an existing runtime. It preserves direct-child barrier ownership and joins owned task destruction on asynchronous shutdown. The same generic TCP program runs on Socketry and Tokio. The adapter scopes runtime context to individual polls when registering resources; its futures can also be polled by Socketry workers while Tokio drives the underlying services. Socketry contextual lookups still identify Socketry execution; portable code passes handles explicitly.
 
 For existing libraries tied to Tokio, either keep their work on Tokio and bridge owned messages/results, or provide the particular trait adapter they consume. Avoid a broad imitation of Tokio's API.
 
@@ -152,7 +152,7 @@ The algorithm's existing Ruby performance motivates the port. Rust performance c
 1. Record boundaries and reusable Rust conventions (implemented).
 2. Replace stackful execution with async-task and Crossbeam worker queues (implemented). Keep the coroutine prototype in its saved branch.
 3. Implement explicit owners, barriers, cancellation and shutdown (implemented for direct children). Automatic descendant draining remains future work.
-4. Establish minimal clock and I/O contracts with concrete consumers (implemented with Network, FileIO, Clock and a portable TCP example).
+4. Establish minimal clock and I/O contracts with concrete consumers (implemented with Network, FileIo, Clock and a portable TCP example).
 5. Implement native readiness and the Tokio adapter, running the same consumers with both (implemented). Native sleep uses async-io until the timer port.
 6. Implement io\_uring's owned-buffer lifecycle, socket/file operations, cancellation and runtime probing (implemented). Improve operation reuse, buffer registration and submission backpressure in subsequent work.
 7. Port the timer queue with upstream attribution and deterministic verification.

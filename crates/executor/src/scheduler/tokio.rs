@@ -7,7 +7,7 @@
 //! runtime. Dropping it closes admission and requests cancellation. Await
 //! shutdown to join task destruction. Socketry's Task::current and
 //! Scheduler::current describe Socketry execution, not Tokio tasks.
-use super::{BufferResult, Clock, FileIO, Interest, Network};
+use super::{BufferResult, Clock, FileIo, Interest, Network};
 use crate::owner::Owner;
 use crate::{Spawn, SpawnError, TaskError};
 use ::tokio::runtime::Handle;
@@ -706,7 +706,7 @@ impl Network for SchedulerHandle {
     }
 }
 
-impl FileIO for SchedulerHandle {
+impl FileIo for SchedulerHandle {
     async fn file_read_at(&self, file: Arc<File>, buffer: Vec<u8>, offset: u64) -> BufferResult {
         self.file_operation(file, buffer, offset, false).await
     }
@@ -836,7 +836,7 @@ impl Network for Scheduler {
         self.handle.io_wait(socket, interest).await
     }
 }
-impl FileIO for Scheduler {
+impl FileIo for Scheduler {
     async fn file_read_at(&self, file: Arc<File>, buffer: Vec<u8>, offset: u64) -> BufferResult {
         self.handle.file_read_at(file, buffer, offset).await
     }

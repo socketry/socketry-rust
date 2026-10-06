@@ -4,7 +4,7 @@
 //! Native selector operations exposed by Socketry schedulers and handles.
 use super::{Scheduler, SchedulerHandle};
 use crate::scheduler::selector::DefaultSelector;
-use crate::scheduler::{BufferResult, Clock, FileIO, Interest, Network};
+use crate::scheduler::{BufferResult, Clock, FileIo, Interest, Network};
 use std::fs::File;
 use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -114,7 +114,7 @@ impl Network for SchedulerHandle {
     }
 }
 
-impl FileIO for SchedulerHandle {
+impl FileIo for SchedulerHandle {
     async fn file_read_at(&self, file: Arc<File>, buffer: Vec<u8>, offset: u64) -> BufferResult {
         match self.selector() {
             Ok(selector) => selector.file_read_at(file, buffer, offset).await,
@@ -170,7 +170,7 @@ impl Network for Scheduler {
     }
 }
 
-impl FileIO for Scheduler {
+impl FileIo for Scheduler {
     async fn file_read_at(&self, file: Arc<File>, buffer: Vec<u8>, offset: u64) -> BufferResult {
         self.handle.file_read_at(file, buffer, offset).await
     }

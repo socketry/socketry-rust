@@ -5,7 +5,7 @@
 
 mod support;
 
-use socketry_executor::{Clock, FileIO, Interest, Network, Spawn};
+use socketry_executor::{Clock, FileIo, Interest, Network, Spawn};
 use std::fs::{File, OpenOptions};
 use std::future::{Future, poll_fn};
 use std::io;
@@ -167,7 +167,7 @@ impl Drop for TemporaryFile {
     }
 }
 
-async fn positioned_files<SchedulerType: FileIO>(scheduler: &SchedulerType) {
+async fn positioned_files<SchedulerType: FileIo>(scheduler: &SchedulerType) {
     static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "socketry-io-{}-{}",
