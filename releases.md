@@ -1,8 +1,12 @@
 # Releases
 
+## v0.2.0
+
+- Rename the positioned file I/O trait from `FileIO` to `FileIo` in `socketry` and `socketry-executor`, including the public `scheduler` module. Update imports and trait bounds.
+
 ## v0.1.5
 
-- Cover io_uring initialization failures, readiness retries, cancellation, and shutdown while making request ownership invariants explicit.
+- Cover io\_uring initialization failures, readiness retries, cancellation, and shutdown while making request ownership invariants explicit.
 - Expose the conventional `FileIO` name with `FileIo` compatibility aliases, extract portable scheduler contracts, and require coverage for every supported platform and feature implementation.
 
 ## v0.1.4

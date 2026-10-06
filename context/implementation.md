@@ -28,7 +28,7 @@ This guide describes the current implementation and its boundaries. Read [the de
 
 ## I/O and runtime boundaries
 
-- `scheduler.rs` re-exports Network, FileIO, Interest and Clock from `scheduler/network.rs`, `file_io.rs`, `interest.rs` and `clock.rs`. Operations return concrete Send futures; portable consumers receive the required capabilities.
+- `scheduler.rs` re-exports Network, FileIo, Interest and Clock from `scheduler/network.rs`, `file_io.rs`, `interest.rs` and `clock.rs`. Operations return concrete Send futures; portable consumers receive the required capabilities.
 - `scheduler/socketry.rs` owns the executor; `socketry/operations.rs` forwards capabilities to its lazily initialized, compile-time selected selector.
 - `scheduler/selector/` contains readiness, epoll, kqueue, iocp and io\_uring. Platform readiness modules share async-io's persistent registrations and process-wide reactor. Registered sockets remain usable as tasks migrate.
 - Default feature `native` provides TCP, positioned files and sleep. Feature `io-uring` selects Linux completion reads/writes; other supported platforms retain readiness. Feature `tokio` enables the separate runtime adapter. No default features builds the executor and contracts without native I/O.

@@ -14,7 +14,7 @@ use std::sync::Arc;
 ///
 /// Buffers and the file remain owned by an in-flight operation even if the
 /// waiting future is dropped. A write can still complete after cancellation.
-pub trait FileIO: Send + Sync {
+pub trait FileIo: Send + Sync {
     fn file_read_at(
         &self,
         file: Arc<File>,

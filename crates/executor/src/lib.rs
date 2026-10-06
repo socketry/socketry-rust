@@ -16,8 +16,5 @@ mod worker;
 
 pub use barrier::Barrier;
 pub use owner::{Spawn, SpawnError};
-pub use scheduler::{BufferResult, Clock, FileIO, Interest, Network, Scheduler, SchedulerHandle};
+pub use scheduler::{BufferResult, Clock, FileIo, Interest, Network, Scheduler, SchedulerHandle};
 pub use task::{Task, TaskError, TaskHandle, yield_now};
-
-/// Compatibility spelling for [`FileIO`].
-pub use scheduler::FileIo;
